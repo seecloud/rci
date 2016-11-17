@@ -16,7 +16,7 @@ import asyncio
 import unittest
 import mock
 
-from rallyci import root
+from rci import root
 
 
 class RootTestCase(unittest.TestCase):

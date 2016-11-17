@@ -14,7 +14,7 @@
 
 import unittest
 
-from rallyci import utils
+from rci import utils
 
 
 class UtilsTestCase(unittest.TestCase):

@@ -19,8 +19,8 @@ import time
 import aiohttp
 import yaml
 
-from rallyci.job import Job
-from rallyci import utils
+from rci.job import Job
+from rci import utils
 
 
 class Task:
@@ -29,7 +29,7 @@ class Task:
     def __init__(self, root, event):
         """
         :param Root root:
-        :param rallyci.base.Event event:
+        :param rci.base.Event event:
         """
         self.root = root
         self.event = event

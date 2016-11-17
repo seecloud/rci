@@ -19,7 +19,7 @@ class Service(abc.ABCMeta):
 
     def __init__(self, rci, name, config, secrets):
         """
-        :param rallyci.rci.RCI rci:
+        :param rci.rci.RCI rci:
         :param str name:
         :param dict config: service config section
         :param dict secrets: secrets section for current service

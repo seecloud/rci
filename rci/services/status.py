@@ -21,7 +21,7 @@ import aiohttp
 import json
 from aiohttp import web
 
-from rallyci.common import periodictask
+from rci.common import periodictask
 
 LOG = logging.getLogger(__name__)
 

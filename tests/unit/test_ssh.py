@@ -1,4 +1,4 @@
-from rallyci.common import ssh
+from rci.common import ssh
 import unittest
 
 

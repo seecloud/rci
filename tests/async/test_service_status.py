@@ -16,8 +16,8 @@ import asyncio
 import unittest
 import mock
 
-from rallyci.services import status
-from rallyci.utils import get_free_port
+from rci.services import status
+from rci.utils import get_free_port
 
 import aiohttp
 

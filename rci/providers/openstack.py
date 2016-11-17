@@ -14,9 +14,9 @@
 
 import asyncio
 
-from rallyci import base
-from rallyci.common import openstack
-from rallyci.common.ssh import SSH
+from rci import base
+from rci.common import openstack
+from rci.common.ssh import SSH
 
 
 class Provider(base.Provider):

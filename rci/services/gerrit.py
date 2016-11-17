@@ -16,10 +16,10 @@ import asyncio
 import re
 import json
 
-from rallyci.common.ssh import SSH
-from rallyci import base
-from rallyci import utils
-from rallyci import task
+from rci.common.ssh import SSH
+from rci import base
+from rci import utils
+from rci import task
 
 
 EVENT_TYPES = {

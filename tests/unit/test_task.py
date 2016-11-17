@@ -15,13 +15,13 @@
 import unittest
 from unittest import mock
 
-from rallyci.task import Task
+from rci.task import Task
 
 
 class TaskTestCase(unittest.TestCase):
 
-    @mock.patch("rallyci.task.Task.__del__")
-    @mock.patch("rallyci.task.asyncio")
+    @mock.patch("rci.task.Task.__del__")
+    @mock.patch("rci.task.asyncio")
     def test___init__(self, mock_asyncio, mock_del):
         root = mock.Mock()
         event = mock.Mock()

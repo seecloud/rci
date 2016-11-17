@@ -18,8 +18,8 @@ import logging
 import signal
 import resource
 
-from rallyci.config import Config
-from rallyci.http import HTTP
+from rci.config import Config
+from rci.http import HTTP
 
 
 class Root:

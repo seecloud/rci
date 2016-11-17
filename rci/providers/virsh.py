@@ -25,8 +25,8 @@ from xml.etree import ElementTree as et
 
 from clis import clis
 
-from rallyci import utils
-from rallyci.common.ssh import SSH
+from rci import utils
+from rci.common.ssh import SSH
 
 
 LOG = logging.getLogger(__name__)

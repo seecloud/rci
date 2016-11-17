@@ -107,12 +107,12 @@ class Event(abc.ABC):
 
     async def update_job_status(self, job):
         """
-        :param rallyci.job.Job job:
+        :param rci.job.Job job:
         """
         pass
 
     async def publish_results(self, jobs):
         """
-        :param list jobs: list of rallyci.job.Job instances
+        :param list jobs: list of rci.job.Job instances
         """
         pass

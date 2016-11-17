@@ -18,7 +18,7 @@ import logging
 import logging.config
 import yaml
 
-from rallyci import utils
+from rci import utils
 
 
 class Config:

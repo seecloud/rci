@@ -19,9 +19,9 @@ import os.path
 import re
 import time
 
-from rallyci import base
-from rallyci.common.ssh import SSH
-from rallyci import utils
+from rci import base
+from rci.common.ssh import SSH
+from rci import utils
 
 COMMON_OPTS = (("-B", "backingstore"), )
 CREATE_OPTS = (("--zfsroot", "zfsroot"), )

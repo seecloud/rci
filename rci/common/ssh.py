@@ -22,7 +22,7 @@ import subprocess
 import time
 
 import asyncssh
-from rallyci.utils import LogDel
+from rci.utils import LogDel
 
 LOG = logging.getLogger(__name__)
 

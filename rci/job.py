@@ -19,7 +19,7 @@ import time
 import os
 import weakref
 
-from rallyci import utils
+from rci import utils
 
 
 class Job:

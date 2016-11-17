@@ -12,7 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci import config
+from rci import config
 
 import os
 import unittest
@@ -25,7 +25,7 @@ class ConfigTestCase(unittest.TestCase):
         self.root = mock.Mock()
         dirname = os.path.dirname(os.path.realpath(__file__))
         cf = os.path.join(dirname, "test_config.yaml")
-        with mock.patch("rallyci.config.Config.configure_logging"):
+        with mock.patch("rci.config.Config.configure_logging"):
             self.config = config.Config(self.root, cf, False)
 
     def test_ssh_keys(self):

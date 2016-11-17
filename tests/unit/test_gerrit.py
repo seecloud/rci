@@ -15,7 +15,7 @@
 import unittest
 from unittest import mock
 
-from rallyci.services import gerrit
+from rci.services import gerrit
 
 
 class GerritTestCase(unittest.TestCase):

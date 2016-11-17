@@ -8,14 +8,14 @@
     logs-url: "https://seecloud.mirantis.com/rci/logs/"
 
 - service:
-    module: rallyci.services.github
+    module: rci.services.github
     name: gh
     data-path: /tmp/rci-gh
     sessions-path: /tmp/rci-gh/sessions
 
 - provider:
     name: os
-    module: rallyci.providers.openstack
+    module: rci.providers.openstack
     max_vms: 64
     ssh:
       default_username: ubuntu

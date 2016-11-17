@@ -20,10 +20,10 @@ import json
 import dbm
 import os
 
-from rallyci import base
-from rallyci.task import Task
+from rci import base
+from rci.task import Task
+from rci.common import github
 
-from aiogh import github
 from aiohttp import web
 import yaml
 
@@ -133,7 +133,7 @@ class Service:
     @staticmethod
     async def check_config(config, service_name):
         """
-        :param rallyci.config.Config config:
+        :param rci.config.Config config:
         :param str service_name:
         """
         pass
@@ -188,7 +188,7 @@ class Service:
         import jinja2
         import pkgutil
         template = jinja2.Template(
-                pkgutil.get_data("rallyci.services",
+                pkgutil.get_data("rci.services",
                                  "github_settings.html").decode("utf8"))
         client = self._get_client(request)
         if client is None:
