@@ -1,3 +1,2 @@
 pytest-asyncio
 flake8
--e git://github.com/redixin/clis.git#egg=Package
