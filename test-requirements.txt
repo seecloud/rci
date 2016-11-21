@@ -1,2 +1,6 @@
+pyyaml
+aiohttp
+asyncssh
+
 pytest-asyncio
 flake8
