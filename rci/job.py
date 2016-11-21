@@ -100,8 +100,7 @@ class Job:
         # TODO: run scripts in parallel
 
     def get_script(self, script_name):
-        return self.root.config.get_script(script_name,
-                                           self.task_local_config)
+        return self.root.config.get_script(script_name)
 
     async def cleanup(self):
         await self.provider.delete_cluster(self.cluster)

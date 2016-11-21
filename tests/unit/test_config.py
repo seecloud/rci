@@ -13,59 +13,89 @@
 #    limitations under the License.
 
 from rci import config
+import yaml
 
 import os
+import tempfile
 import unittest
 from unittest import mock
 
 
+def _get_configuration():
+    return [
+        {"core": {
+            "listen": ["localhost", 8081],
+            "url": "https://example.net"
+        }},
+        {"service": {
+            "name": "status",
+            "module": "rci.services.status",
+        }},
+        {"script": {
+            "name": "env",
+            "user": "rci",
+            "interpreter": "/bin/sh",
+            "data": "env"
+        }},
+        {"job": {
+            "name": "pytest",
+            "provider": "os",
+            "scripts": {
+                "test-cluster": ["env"],
+            },
+        }},
+        {"matrix": {
+            "name": "matrix-1",
+            "projects": ["project-1", "project-2"],
+            "change-request": ["pytest"],
+            "push": ["pytest"],
+        }},
+    ]
+
+
+def _get_conf_tmpfile(configuration=None):
+    if configuration is None:
+        configuration = _get_configuration()
+    config = tempfile.NamedTemporaryFile()
+    config.write(yaml.dump(configuration,
+                           default_flow_style=False).encode("utf8"))
+    config.flush()
+    return config
+
+
+def _get_default_config_instance():
+    cf = _get_conf_tmpfile()
+    c = config.Config(mock.Mock())
+    c.load(cf.name)
+    return c
+
+
 class ConfigTestCase(unittest.TestCase):
 
-    def setUp(self):
-        self.root = mock.Mock()
-        dirname = os.path.dirname(os.path.realpath(__file__))
-        cf = os.path.join(dirname, "test_config.yaml")
-        with mock.patch("rci.config.Config.configure_logging"):
-            self.config = config.Config(self.root, cf, False)
-
-    def test_ssh_keys(self):
-        self.assertEqual("/keys/test.pub", self.config.get_ssh_key())
-        self.assertEqual("/keys/test", self.config.get_ssh_key("private"))
-
     def test_get_jobs(self):
-        jobs = list(self.config.get_jobs("openstack/rally"))
-        expected = [{"env": {"TOX_ENV": "pep8"},
-                     "name": "tox-pep8",
-                     "provider": "my_virsh",
-                     "vms": [{"name": "ubuntu-1404-dev",
-                              "scripts": ["git_checkout", "run_tests"]}]}]
-        self.assertEqual(expected, jobs)
-
-    def test_get_jobs_local(self):
-        job = {"name": "spam", "scripts": ["eggs"]}
-        local_config = [{"job": job}]
-        jobs_gen = self.config.get_jobs("openstack/rally", "jobs",
-                                        local_config)
-        self.assertIn(job, list(jobs_gen))
-
-    def test_get_jobs_local_override(self):
-        job = {"name": "tox-pep8", "scripts": ["eggs"]}
-        local_config = [{"job": job}]
-        jobs_gen = self.config.get_jobs("openstack/rally", "jobs",
-                                        local_config)
-        self.assertEqual([job], list(jobs_gen))
-
+        c = _get_default_config_instance()
+        expected = {
+            'scripts': {'test-cluster': ['env']},
+            'name': 'pytest',
+            'provider': 'os'
+        }
+        self.assertEqual(expected, c.get_jobs("project-1", "push"))
+    
     def test_get_script(self):
-        s = self.config.get_script("show_env")
-        expected = {"name": "show_env", "user": "rally", "data": "env"}
+        c = _get_default_config_instance()
+        s = c.get_script("env")
+        expected = {'data': 'env', 'interpreter': '/bin/sh',
+                    'name': 'env', 'user': 'rci'}
         self.assertEqual(expected, s)
 
-    def test_get_script_local(self):
-        local_config = [{"script": {"name": "test", "data": "ok"}}]
-        s = self.config.get_script("test", local_config)
-        self.assertEqual(local_config[0]["script"], s)
-
-    def test_get_script_local_override(self):
-        local_config = [{"script": {"name": "show_env", "data": "ok"}}]
-        s = self.config.get_script("show_env", local_config)
-        self.assertEqual(local_config[0]["script"], s)
+    def test_validation_unknown_job(self):
+        cfg = _get_configuration()
+        cfg.append(
+            {"matrix": {
+                "name": "unknownjob",
+                "projects": "project-1",
+                "change-request": ["nonexistent-job"]
+            }})
+        c = config.Config(mock.Mock())
+        cf = _get_conf_tmpfile(cfg)
+        self.assertRaises(config.ConfigError, c.load, cf.name)

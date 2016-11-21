@@ -62,15 +62,12 @@ class Task:
         cfg_gen = self.root.config.get_jobs
 
         if self.event.event_type == "push":
-            for cfg in cfg_gen(self.event.project, "jobs-push",
-                               self.local_config):
+            for cfg in cfg_gen(self.event.project, "push"):
                 self._start_job(cfg)
             return
 
         if self.event.event_type == "cr":
-            for cfg in cfg_gen(self.event.project, "jobs-cr", self.local_config):
-                self._start_job(cfg, voting=True)
-            for cfg in cfg_gen(self.event.project, "jobs-cr-non-voting", None):
+            for cfg in cfg_gen(self.event.project, "cr"):
                 self._start_job(cfg)
 
     async def run(self):

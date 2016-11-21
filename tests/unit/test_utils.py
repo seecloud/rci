@@ -18,45 +18,4 @@ from rci import utils
 
 
 class UtilsTestCase(unittest.TestCase):
-    def test_expand_jobs(self):
-        config = {
-            "job": {
-                "j1": {
-                    "name": "j1",
-                    "foo": "bar",
-                    "spam": "eggs",
-                },
-                "j2": {
-                    "name": "j2",
-                    "spam": "bacon",
-                    "parent": "j1",
-                },
-                "j3": {
-                    "name": "j3",
-                    "key": "value",
-                    "parent": "j2",
-                },
-            }
-        }
-        expanded_config = {
-            "job": {
-                "j1": {
-                    "name": "j1",
-                    "foo": "bar",
-                    "spam": "eggs",
-                },
-                "j2": {
-                    "name": "j2",
-                    "foo": "bar",
-                    "spam": "bacon",
-                },
-                "j3": {
-                    "name": "j3",
-                    "foo": "bar",
-                    "spam": "bacon",
-                    "key": "value",
-                },
-            }
-        }
-        utils.expand_jobs(config)
-        self.assertEqual(expanded_config, config)
+    pass

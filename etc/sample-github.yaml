@@ -249,5 +249,5 @@
     projects:
       - r-ci/os-image-builder
       - seecloud/os-image-builder
-    jobs-cr:
+    change-request:
       - test-os-image-builder

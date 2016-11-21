@@ -126,8 +126,9 @@ class Root:
             self.start_obj(service)
 
     def _load_config(self):
-        self.config = Config(self, self.filename, self.verbose)
-        self.config.configure_logging()
+        self.config = Config(self)
+        self.config.load(self.filename)
+        self.config.configure_logging(self.verbose)
         self.log = logging.getLogger(__name__)
 
     @asyncio.coroutine

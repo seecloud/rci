@@ -31,28 +31,10 @@ NAMES = [("s", "s"),
          ("day", "days")]
 
 
-def _merge(child, parent):
-    for key in parent:
-        if key not in child:
-            child[key] = parent[key]
-
-
-def _check_parent(config, job):
-    parent = job.pop("parent", None)
-    if parent:
-        _check_parent(config, config["job"][parent])
-        _merge(job, config["job"][parent])
-
-
 def get_local_address(remote_address):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect((remote_address, 0))
     return s.getsockname()[0]
-
-
-def expand_jobs(config):
-    for job in config["job"]:
-        _check_parent(config, config["job"][job])
 
 
 def get_free_port():

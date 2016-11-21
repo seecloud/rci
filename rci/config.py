@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+from collections import defaultdict
 import importlib
 import logging
 import logging.config
@@ -21,99 +22,84 @@ import yaml
 from rci import utils
 
 
+class ConfigError(Exception):
+    pass
+
+
 class Config:
+    """Represent rci configuration.
 
-    def __init__(self, root, filename, verbose):
+    c = Config(root)
+    c.load("/path/to/file.yaml")
+    listen = c.data["core"]["listen"]
+    some_secret = c.secrets.get("some-secret")
+    my_job = c.data["job"]["my-job"]
+    my_script = c.data["script"]["my-script"]
+    """
+
+    def __init__(self, root):
         self.root = root
-        self.filename = filename
-        self.verbose = verbose
-
-        self.data = {}
+        self.data = {
+            "core": {
+                "listen": ["localhost", 8080],
+                "url": "http://localhost:8080",
+            }
+        }
+        self.secrets = {}
         self._modules = {}
-        self._configured_projects = set()
+        self._project_jobs = defaultdict(dict)
 
-        with open(self.filename, "rb") as cf:
+    def load(self, filename):
+
+        with open(filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
 
         for item in self.raw_data:
-            if len(item.keys()) > 1:
-                raise ValueError("Invalid config entry %s" % item)
+            if (not isinstance(item, dict)) and len(item.keys()) > 1:
+                raise ConfigError("Invalid config entry %s" % item)
             key = list(item.keys())[0]
-            value = list(item.values())[0]
+            value = item[key]
             name = value.get("name")
             if name:
                 self.data.setdefault(key, {})
                 if name in self.data[key]:
-                    raise ValueError("Duplicate %s (%s)" % (name,
-                                                            self.data[key]))
+                    raise ConfigError("Duplicate %s (%s)" % (name,
+                                                             self.data[key]))
                 self.data[key][name] = value
             else:
-                self.data.setdefault(key, [])
-                self.data[key].append(value)
-        utils.expand_jobs(self.data)
+                self.data.setdefault(key, {})
+                self.data[key].update(value)
+
         for matrix in self.data.get("matrix", {}).values():
             for project in matrix["projects"]:
-                self._configured_projects.add(project)
-        secrets_file = self.raw_data[0]["core"].get("secrets")
+                for jt in ("change-request", "push"):
+                    for job_name in matrix.get(jt, []):
+                        try:
+                            job = self.data["job"][job_name]
+                        except KeyError:
+                            raise ConfigError("Unknown job %s" % job_name)
+                        self._project_jobs[project][jt] = job
+
+        secrets_file = self.data["core"].get("secrets")
         if secrets_file:
             self.secrets = yaml.safe_load(open(secrets_file))
-        else:
-            self.secrets = {}
-        self.core = self.raw_data[0]["core"]
-
-    def get_value(self, value, default):
-        return self.data["rally-ci"][0].get(value, default)
-
-    def get_ssh_key(self, keytype="public", name="default"):
-        return self.data["ssh-key"][name][keytype]
-
-    def get_ssh_keys(self, keytype="public"):
-        return [k[keytype] for k in self.data["ssh-key"].values()]
 
     def is_project_configured(self, project):
-        return project in self._configured_projects
+        return project in self._project_jobs
 
-    def get_jobs(self, project, jobs_type="jobs", local_config=None):
+    def get_jobs(self, project, jobs_type):
         """
         :param str project: project name
-        :param str jobs_type: one of jobs, non-voting-jobs, merge-jobs
-        :param list local_config: project config file decoded from yaml
+        :param str jobs_type: one of change-request, push
+        :returns: list of job dicts
         """
-        if project not in self._configured_projects:
-            raise StopIteration
+        return self._project_jobs[project].get(jobs_type, [])
 
-        local_jobs = set()
+    def get_script(self, name):
+        return self.data["script"].get(name, None)
 
-        if local_config:
-            for item in local_config:
-                key, value = list(item.items())[0]
-                if key == "job":
-                    local_jobs.add(value["name"])
-                    yield value
-
-        for matrix in self.data.get("matrix", []).values():
-            if project in matrix["projects"]:
-                for job in matrix.get(jobs_type, []):
-                    value = self.data["job"][job]
-                    if value["name"] not in local_jobs:
-                        yield value
-
-    def get_script(self, script, local_config=None):
-        if local_config:
-            for item in local_config:
-                key, value = list(item.items())[0]
-                if key == "script":
-                    if value["name"] == script:
-                        return value
-        return self.data["script"].get(script, None)
-
-    @asyncio.coroutine
-    def validate(self):
-        yield from asyncio.sleep(0)
-
-    def get_instance(self, cfg, class_name, *args, **kwargs):
-        module = self._get_module(cfg["module"])
-        return getattr(module, class_name)(cfg, *args, **kwargs)
+    async def validate(self):
+        await asyncio.sleep(0)
 
     def iter_instances(self, section, class_name):
         section = self.data.get(section, {})
@@ -136,7 +122,7 @@ class Config:
             self._modules[name] = module
         return module
 
-    def configure_logging(self):
+    def configure_logging(self, verbose):
         LOGGING = {
             "version": 1,
             "formatters": {
@@ -163,7 +149,7 @@ class Config:
             }
         }
 
-        if self.verbose:
+        if verbose:
             LOGGING["handlers"]["console"]["level"] = "DEBUG"
         else:
             LOGGING["loggers"][""]["handlers"].remove("console")
