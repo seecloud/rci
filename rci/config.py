@@ -80,6 +80,23 @@ class Config:
                             raise ConfigError("Unknown job %s" % job_name)
                         self._project_jobs[project][jt] = job
 
+        #validate jobs
+        for job in self.data["job"].values():
+            try:
+                provider = self.data["provider"][job["provider"]]
+            except KeyError:
+                raise ConfigError("Unknown provider %s" % job["provider"])
+            try:
+                cluster = provider["clusters"][job["cluster"]]
+            except KeyError:
+                raise ConfigError("Unknown cluster %s" % job["cluster"])
+            for vm, scripts in job["scripts"].items():
+                if vm not in cluster:
+                    raise ConfigError("Unknown vm %s" % vm)
+                for script in scripts:
+                    if script not in self.data["script"]:
+                        raise ConfigError("Unknown script %s" % script)
+
         secrets_file = self.data["core"].get("secrets")
         if secrets_file:
             self.secrets = yaml.safe_load(open(secrets_file))

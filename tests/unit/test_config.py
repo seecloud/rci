@@ -27,6 +27,17 @@ def _get_configuration():
             "listen": ["localhost", 8081],
             "url": "https://example.net"
         }},
+        {"provider": {
+            "name": "os",
+            "module": "rci.providers.openstack",
+            "clusters": {
+                "os-cluster-1": {
+                    "os-vm-1": {
+                        "image": "image-1",
+                    },
+                },
+            },
+        }},
         {"service": {
             "name": "status",
             "module": "rci.services.status",
@@ -40,8 +51,9 @@ def _get_configuration():
         {"job": {
             "name": "pytest",
             "provider": "os",
+            "cluster": "os-cluster-1",
             "scripts": {
-                "test-cluster": ["env"],
+                "os-vm-1": ["env"],
             },
         }},
         {"matrix": {
@@ -70,14 +82,23 @@ def _get_default_config_instance():
     return c
 
 
+def _append_and_get_config(append):
+    cfg = _get_configuration()
+    cfg.append(append)
+    c = config.Config(mock.Mock())
+    cf = _get_conf_tmpfile(cfg)
+    return c.load(cf.name)
+
+
 class ConfigTestCase(unittest.TestCase):
 
     def test_get_jobs(self):
         c = _get_default_config_instance()
         expected = {
-            'scripts': {'test-cluster': ['env']},
+            'scripts': {'os-vm-1': ['env']},
             'name': 'pytest',
-            'provider': 'os'
+            'provider': 'os',
+            "cluster": "os-cluster-1"
         }
         self.assertEqual(expected, c.get_jobs("project-1", "push"))
     
@@ -89,13 +110,50 @@ class ConfigTestCase(unittest.TestCase):
         self.assertEqual(expected, s)
 
     def test_validation_unknown_job(self):
-        cfg = _get_configuration()
-        cfg.append(
+        self.assertRaisesRegexp(config.ConfigError, "nonexistent-job",
+            _append_and_get_config,
             {"matrix": {
                 "name": "unknownjob",
                 "projects": "project-1",
                 "change-request": ["nonexistent-job"]
             }})
-        c = config.Config(mock.Mock())
-        cf = _get_conf_tmpfile(cfg)
-        self.assertRaises(config.ConfigError, c.load, cf.name)
+
+    def test_validation_unknown_script(self):
+        self.assertRaisesRegexp(config.ConfigError, "nonexistent-script",
+            _append_and_get_config,
+            {"job": {
+                "name": "unknownscript",
+                "provider": "os",
+                "cluster": "os-cluster-1",
+                "scripts": {"os-vm-1": ["nonexistent-script"]},
+            }})
+
+    def test_validation_unknown_provider(self):
+        self.assertRaisesRegexp(config.ConfigError, "nonexistent-provider",
+            _append_and_get_config,
+            {"job": {
+                "name": "unknownprovider",
+                "provider": "nonexistent-provider",
+                "cluster": "os-cluster-2",
+                "scripts": {"os-vm-1": ["env"]},
+            }})
+
+    def test_validation_unknown_cluster(self):
+        self.assertRaisesRegexp(config.ConfigError, "nonexistent-cluster",
+            _append_and_get_config,
+            {"job": {
+                "name": "unknowncluster",
+                "provider": "os",
+                "cluster": "nonexistent-cluster",
+                "scripts": {"os-vm-1": ["env"]},
+            }})
+
+    def test_validation_unknown_vm(self):
+        self.assertRaisesRegexp(config.ConfigError, "nonexistent-vm",
+            _append_and_get_config,
+            {"job": {
+                "name": "unknownvm",
+                "provider": "os",
+                "cluster": "os-cluster-1",
+                "scripts": {"nonexistent-vm": ["env"]},
+            }})
