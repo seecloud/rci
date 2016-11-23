@@ -15,8 +15,11 @@
 import asyncio
 import json
 import ssl
+import logging
 
 import aiohttp
+
+LOG = logging
 
 
 class OpenStackError(Exception):
@@ -68,7 +71,6 @@ EXCEPTION_FACTORY_MAP = {
 async def _process_response(r):
     if r.headers["Content-Type"].startswith("application/json"):
         json = await r.json()
-        print(json)
         if len(json) > 1:
             return json
         else:
@@ -213,18 +215,20 @@ class Client:
                     return
         return data
 
-    async def wait_server(self, server_id, status, error_statuses, delay=1, retries=64):
+    async def wait_server(self, server_id, status, error_statuses, delay=4, retries=128):
         while retries:
             await asyncio.sleep(delay)
             server = await self.get_server(server_id)
             current_status = server["server"]["status"]
             if current_status == status:
+                LOG.debug("Server is ready: %s", server)
                 return server
             if current_status in error_statuses:
-                raise Exception("VM error %s" % server)
+                raise OpenStackError("VM error %s" % server)
             else:
-                print(current_status)
+                LOG.debug("Waiting server %s status %s", server_id, current_status)
             retries -= 1
+        raise OpenStackError("Timeout waiting for server %s" % server_id)
 
 
     async def _post(self, service, url, payload):
@@ -236,25 +240,25 @@ class Client:
     async def _get(self, service, url):
         async with self.session.get(self.get_endpoint(service) + url,
                                     headers=self.headers) as r:
-            print(service, url)
+            LOG.debug(service, url)
             return (await r.json())
 
     async def _delete(self, service, url):
         async with self.session.delete(self.get_endpoint(service) + url,
                                        headers=self.headers) as r:
-            print(await r.text())
+            LOG.debug(await r.text())
             return (await r.json())
 
     def delete(self, url):
-        print("DELETE", url)
+        LOG.debug("DELETE %s", url)
         return self.session.delete(url, headers=self.headers)
 
     def get(self, url):
-        print("GET", url)
+        LOG.debug("GET %s", url)
         return self.session.get(url, headers=self.headers)
 
     def post(self, url, payload):
-        print("POST", url, payload)
+        LOG.debug("POST %s %s", url, payload)
         return self.session.post(url, headers=self.headers,
                                  data=json.dumps(payload))
 
