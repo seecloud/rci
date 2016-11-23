@@ -74,6 +74,7 @@ class Provider(base.Provider):
 
     async def _get_cluster(self, name):
         await self._ready.wait()
+        default_user = self.config["ssh"]["default_username"]
         cluster = base.Cluster()
         for vm_name, vm_conf in self.config["clusters"][name].items():
             networks = []
@@ -92,7 +93,8 @@ class Provider(base.Provider):
                 vm_name, self.image_ids[vm_conf["image"]],
                 self.flavor_ids[vm_conf["flavor"]],
                 networks, self.config["ssh"]["key_name"])
-            cluster.vms[vm_name] = VM(server["server"]["id"], vm_name)
+            cluster.vms[vm_name] = VM(server["server"]["id"], vm_name,
+                                      vm_conf.get("username", default_user))
         for vm in cluster.vms.values():
             data = await self.client.wait_server(vm.uuid, delay=4, status="ACTIVE",
                                                  error_statuses=["ERROR"])
@@ -101,7 +103,7 @@ class Provider(base.Provider):
             if ip is not None:
                 ip = ip[0]["addr"]
                 vm.ssh = SSH(self.root.loop, ip,
-                             self.config["ssh"]["default_username"],
+                             vm.username,
                              keys=self.ssh_keys,
                              jumphost=self.jumphost)
             else:
@@ -112,9 +114,10 @@ class Provider(base.Provider):
 
 class VM(base.SSHVM):
 
-    def __init__(self, uuid, name):
+    def __init__(self, uuid, name, username=None):
         self.uuid = uuid
         self.name = name
+        self.username = username
 
     def __str__(self):
         return "<OpenStack VM %s (%s)>" % (self.uuid, self.ssh)
