@@ -47,7 +47,7 @@ class Config:
         }
         self.secrets = {}
         self._modules = {}
-        self._project_jobs = defaultdict(dict)
+        self._project_jobs = defaultdict(lambda:defaultdict(list))
 
     def load(self, filename):
 
@@ -72,13 +72,14 @@ class Config:
 
         for matrix in self.data.get("matrix", {}).values():
             for project in matrix["projects"]:
-                for jt in ("change-request", "push"):
+                for jt in ("cr", "push"):
                     for job_name in matrix.get(jt, []):
                         try:
                             job = self.data["job"][job_name]
+                            job["name"] = job_name
                         except KeyError:
                             raise ConfigError("Unknown job %s" % job_name)
-                        self._project_jobs[project][jt] = job
+                        self._project_jobs[project][jt].append(job)
 
         #validate jobs
         for job in self.data["job"].values():
@@ -100,6 +101,9 @@ class Config:
         secrets_file = self.data["core"].get("secrets")
         if secrets_file:
             self.secrets = yaml.safe_load(open(secrets_file))
+        self.core = self.data["core"]
+
+        print("Config loaded. Jobs: %s" % self._project_jobs)
 
     def is_project_configured(self, project):
         return project in self._project_jobs
@@ -110,7 +114,7 @@ class Config:
         :param str jobs_type: one of change-request, push
         :returns: list of job dicts
         """
-        return self._project_jobs[project].get(jobs_type, [])
+        return self._project_jobs[project][jobs_type]
 
     def get_script(self, name):
         return self.data["script"].get(name, None)

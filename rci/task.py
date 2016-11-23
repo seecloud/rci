@@ -52,6 +52,7 @@ class Task:
             self._finished.set()
 
     def _start_job(self, config, voting=False):
+        self.root.log.debug("Starting job %s", config)
         job = Job(self, config, voting)
         self.jobs.append(job)
         fut = self.root.start_obj(job)
@@ -72,7 +73,6 @@ class Task:
 
     async def run(self):
         self.root.log.info("Starting task %s" % self)
-        self.local_config = await self.event.get_local_config()
         self._start_jobs()
         if not self.jobs:
             # TODO

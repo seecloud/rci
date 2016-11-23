@@ -94,12 +94,12 @@ class ConfigTestCase(unittest.TestCase):
 
     def test_get_jobs(self):
         c = _get_default_config_instance()
-        expected = {
+        expected = [{
             'scripts': {'os-vm-1': ['env']},
             'name': 'pytest',
             'provider': 'os',
             "cluster": "os-cluster-1"
-        }
+        }]
         self.assertEqual(expected, c.get_jobs("project-1", "push"))
     
     def test_get_script(self):
@@ -115,7 +115,7 @@ class ConfigTestCase(unittest.TestCase):
             {"matrix": {
                 "name": "unknownjob",
                 "projects": "project-1",
-                "change-request": ["nonexistent-job"]
+                "cr": ["nonexistent-job"]
             }})
 
     def test_validation_unknown_script(self):
