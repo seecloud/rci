@@ -62,10 +62,11 @@ class Provider(base.Provider):
             await self.client.delete_network(uuid)
 
     async def _create_server(self, server_name, image_id, flavor_id,
-                             networks, ssh_key_name):
+                             networks, ssh_key_name, user_data):
         await self._vms_semaphore.acquire()
         server = await self.client.create_server(
-            server_name, image_id, flavor_id, networks, ssh_key_name)
+            server_name, image_id, flavor_id, networks,
+            ssh_key_name, user_data)
         return server
 
     async def get_cluster(self, name):
@@ -92,7 +93,8 @@ class Provider(base.Provider):
             server = await self._create_server(
                 vm_name, self.image_ids[vm_conf["image"]],
                 self.flavor_ids[vm_conf["flavor"]],
-                networks, self.config["ssh"]["key_name"])
+                networks, self.config["ssh"]["key_name"],
+                vm_conf.get("user_data", ""))
             cluster.vms[vm_name] = VM(server["server"]["id"], vm_name,
                                       vm_conf.get("username", default_user))
         for vm in cluster.vms.values():

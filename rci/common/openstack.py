@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import base64
 import json
 import ssl
 import logging
@@ -38,6 +39,10 @@ class Forbidden(OpenStackError):
     pass
 
 
+class BadRequest(OpenStackError):
+    pass
+
+
 NEUTRON_EXCEPTION_MAP = {
     "OverQuota": OverQuota,
 }
@@ -52,7 +57,7 @@ def neutron_exception_factory(r, json):
     return NeutronException(message)
 
 
-def forbidden_exceotion_factory(r, json):
+def forbidden_exception_factory(r, json):
     message = json["forbidden"].get("message")
     if message:
         if "exceeded" in message:
@@ -61,10 +66,14 @@ def forbidden_exceotion_factory(r, json):
             return Forbidden(message)
     return Forbidden(str(json))
 
+def badrequest_exception_factory(r, json):
+    return BadRequest(str(json["badRequest"]))
+
 
 EXCEPTION_FACTORY_MAP = {
     "NeutronError": neutron_exception_factory,
-    "forbidden": forbidden_exceotion_factory,
+    "forbidden": forbidden_exception_factory,
+    "badRequest": badrequest_exception_factory,
 }
 
 
@@ -155,7 +164,10 @@ class Client:
         async with self.get(url) as r:
             return await r.json()
 
-    async def create_server(self, name, imageRef, flavorRef, networks, key_name):
+    async def create_server(self, name, imageRef, flavorRef, networks,
+                            key_name, user_data=""):
+        if user_data:
+            user_data = base64.b64encode(user_data.encode("utf8")).decode("ascii")
         return await self._post("compute", "/servers", {
             "server": {
                 "name": name,
@@ -163,6 +175,7 @@ class Client:
                 "flavorRef": flavorRef,
                 "networks": networks,
                 "key_name": key_name,
+                "user_data": user_data,
             }
         })
 
