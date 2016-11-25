@@ -2,10 +2,24 @@
 
 - core:
     listen: ["0.0.0.0", 8081]
-    url: "https://seecloud.mirantis.com"
+    url: "http://eye.defiler.tk:8081"
     secrets: /etc/rci-secrets.yaml
     jobs-logs: /tmp/rci-logs
     logs-url: "https://seecloud.mirantis.com/rci/logs/"
+
+- service:
+    name: monitor
+    module: rci.services.monitor
+    http_path: monitor
+    auth: github
+    access:
+      allow_anonymous: true
+      admin:
+        users: [redixin]
+        orgs: []
+      user:
+        users: []
+        orgs: [seecloud, r-ci]
 
 - service:
     module: rci.services.github
@@ -26,50 +40,12 @@
         username: ubuntu
       access_net: "rci-int-net"
     clusters:
-      os-image-builder:
-        vm:
-          image: rci-u1404
-          flavor: m1.small
-          interfaces:
-            - ["static", "rci-int-net"]
       single_ubuntu:
         ubuntu:
           image: "rci-u1404"
           flavor: rci-1vcpu-1024ram
           interfaces:
             - ["static", "rci-int-net"]
-      seecloud_cluster:
-        master:
-          image: "rci-u1404"
-          flavor: rci-1vcpu-1024ram
-          interfaces:
-            - ["static", "rci-int-net"]
-            - ["dynamic", "testcluster-int-net"]
-        pr1:
-          image: centos-iso-base.qcow
-          flavor: rci-2vcpu-4096ram-20disk
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
-        pr2:
-          image: centos-iso-base.qcow
-          flavor: rci-2vcpu-4096ram-20disk
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
-        pr3:
-          image: centos-iso-base.qcow
-          flavor: rci-2vcpu-4096ram-20disk
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
-        pr4:
-          image: centos-iso-base.qcow
-          flavor: rci-2vcpu-4096ram-20disk
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
-        pr5:
-          image: centos-iso-base.qcow
-          flavor: rci-2vcpu-4096ram-20disk
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
 
 - script:
     name: env
@@ -95,159 +71,22 @@
       git pull
       git checkout $GITHUB_HEAD
 
-- script:
-    name: build-os-image
-    data: |
-      env
-      sudo apt-get -y install rng-tools gnupg unzip qemu
-      sudo chgrp sudo /dev/kvm
-      sudo rngd -r /dev/urandom
-      cat > keygen <<EOF
-      Key-Type: RSA
-      Key-Length: 2048
-      Subkey-Type: RSA
-      Subkey-Length: 2048
-      Name-Real: RCI
-      Name-Comment: no passphrse
-      Name-Email: support@mirantis.com
-      Expire-Date: 0
-      Passphrase: abc
-      %commit
-      %echo done
-      EOF
-      gpg --batch --gen-key keygen
-      mv .gnupg /tmp/
-      wget https://releases.hashicorp.com/packer/0.11.0/packer_0.11.0_linux_amd64.zip
-      unzip packer_0.11.0_linux_amd64.zip
-      wget http://buildlogs.centos.org/rolling/7/isos/x86_64/CentOS-7-x86_64-Minimal-1511.iso -O /tmp/CentOS-7-x86_64-Minimal-1511.iso
-      cd $GITHUB_REPO
-      ../../packer build -only qemu centos7.json
-      ls -lha /tmp/
-
-- script:
-    name: gzip_logs
-    data: |
-      gzip /var/log/syslog --stdout > /tmp/syslog.txt.gz
-
-- script:
-    name: sleep60
-    data: |
-      sleep 60
-
-- script:
-    name: install-latest-ansible
-    data: |
-      sudo apt-add-repository -y ppa:ansible/ansible
-      sudo apt-get -y update
-      sudo apt-get -y install ansible
-
-- script:
-    name: copy-ssh-key-to-slaves
-    data: |
-        ssh-keygen -t rsa -N "" -f .ssh/id_rsa
-        PUBLIC_KEY=$(cat .ssh/id_rsa.pub)
-        cat > /tmp/.node-setup.sh << EOF
-        sudo mkdir /root/.ssh || true
-        echo $PUBLIC_KEY > /tmp/.pk
-        sudo mv /tmp/.pk /root/.ssh/authorized_keys
-        sudo chown root:root /root/.ssh/authorized_keys
-        sudo chmod 600 /root/.ssh/authorized_keys
-        EOF
-        upload_key () {
-        n=0
-        until [ $n -ge 60 ]
-        do
-         n=$[$n+1]
-         sshpass -p mirantis ssh -o StrictHostKeyChecking=no mirantis@${!SRV} sh -xs < /tmp/.node-setup.sh
-         SVNAME=$(echo $SRV | sed 's/^RCI_SERVER_\([[:alnum:]]\+\).*/\1/')
-         ssh -o StrictHostKeyChecking=no root@$SVNAME id
-         if [ $? -eq 0 ]
-         then
-          return
-         fi
-         sleep 10
-        done
-        echo "Timeout waiting for host"
-        exit 255
-        }
-        for SRV in ${!RCI_SERVER_pr*}
-        do
-        upload_key
-        done
-
-- script:
-    name: eth1-up
-    data: |
-      cat > /tmp/.eth1 <<EOF
-      auto eth1
-      iface eth1 inet dhcp
-      EOF
-      sudo mv /tmp/.eth1 /etc/network/interfaces.d/eth1.cfg
-      sudo ifup eth1
-
-- script:
-    name: add-all-servers-to-etc-hosts
-    data: |
-      env
-      rm /tmp/_hosts || true
-      for S in ${!RCI_SERVER_*}
-      do
-       SVNAME=$(echo $S | sed 's/^RCI_SERVER_\([[:alnum:]]\+\).*/\1/')
-       echo "${!S} $SVNAME" >> /tmp/_hosts
-      done
-      sudo sh -c 'cat /tmp/_hosts >> /etc/hosts'
-
-- script:
-    name: run-automation
-    data: |
-      cd $GITHUB_REPO
-      ansible -i inventory -m ping all
-      ansible-playbook -i inventory init_runner.yml
-
-- job:
-    name: test-automation
-    provider: os
-    cluster: seecloud_cluster
-    scripts:
-      master:
-        - init
-        - git-checkout
-        - eth1-up
-        - install-latest-ansible
-        - add-all-servers-to-etc-hosts
-        - copy-ssh-key-to-slaves
-        - run-automation
-
-- job:
-    name: test-os-image-builder
-    provider: os
-    cluster: os-image-builder
-    scripts:
-      vm:
-        - git-checkout
-        - build-os-image
-
 - job:
     name: env
     provider: os
-    cluster: test_cluster
+    cluster: single_ubuntu
     scripts:
-      master:
+      ubuntu:
+        - env
         - git-checkout
-        - sleep60
-
-- matrix:
-    name: automation
-    projects:
-      - seecloud/automation
-      - r-ci/automation
-    jobs-cr:
-      test-automation
 
 - matrix:
     name: image-builder
     projects:
       - r-ci/os-image-builder
-      - seecloud/os-image-builder
-    change-request:
-      - test-os-image-builder
+      - r-ci/automation
+      - redixin/automation
+    cr:
+      - env
+    push:
+      - env

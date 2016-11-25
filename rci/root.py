@@ -29,6 +29,8 @@ class Root:
         self._running_coros = set()
         self._running_cleanups = set()
 
+        self._http_handlers = {}
+
         self.filename = filename
         self.verbose = verbose
 
@@ -121,9 +123,6 @@ class Root:
         self._running_cleanups.add(fut)
         fut.add_done_callback(self._running_cleanups.remove)
 
-    def start_services(self):
-        for service in self.config.iter_instances("service", "Service"):
-            self.start_obj(service)
 
     def _load_config(self):
         self.config = Config(self)
@@ -168,15 +167,30 @@ class Root:
             except Exception:
                 self.log.exception("Error loading new config")
 
+    @asyncio.coroutine
+    def _http_handler(self, request):
+        print(request.path)
+        handler = self._http_handlers.get(request.path.split("/")[1])
+        if handler:
+            response = yield from handler(request)
+            return response
 
     @asyncio.coroutine
     def run(self):
         self._load_config()
 
-        listen = self.config.raw_data[0]["core"]["listen"]
-        self.http = HTTP(self.loop, listen)
 
-        self.start_services()
+        for service in self.config.iter_instances("service", "Service"):
+            self.start_obj(service)
+            http_path = getattr(service, "http_path", None)
+            if http_path:
+                self._http_handlers[http_path] = service.http_handler
+
+        listen = self.config.raw_data[0]["core"]["listen"]
+
+        self.http = HTTP(self.loop, listen)
+        self.http.add_route("*", r"/{dir:.*}", self._http_handler)
+
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             yield from prov.start()

@@ -27,6 +27,9 @@ class Provider(base.Provider):
         self._get_cluster_lock = asyncio.Lock()
         self._vms_semaphore = asyncio.Semaphore(self.config["max_vms"])
 
+    async def stop(self):
+        await asyncio.sleep(0)
+
     async def start(self):
         self.access_net = self.config["ssh"]["access_net"]
         self.ssh_keys = [self.config["ssh"]["private_key_path"]]
@@ -76,7 +79,7 @@ class Provider(base.Provider):
     async def _get_cluster(self, name):
         await self._ready.wait()
         default_user = self.config["ssh"]["default_username"]
-        cluster = base.Cluster()
+        cluster = base.Cluster(self)
         for vm_name, vm_conf in self.config["clusters"][name].items():
             networks = []
             for if_type, if_name in vm_conf["interfaces"]:

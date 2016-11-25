@@ -46,10 +46,14 @@ class SSHVM(VM):
 
 class Cluster:
 
-    def __init__(self):
+    def __init__(self, provider):
+        self.provider = provider
         self.networks = {}
         self.vms = {}
         self.env = {}
+
+    async def delete(self):
+        return await self.provider.delete_cluster(self)
 
 
 class Provider(abc.ABC):

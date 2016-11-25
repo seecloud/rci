@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style type=text/css>
+td { border: 1px solid; }
+</style>
+<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+  function listJobs() {
+    var r = new XMLHttpRequest();
+    r.addEventListener("load", function (resp) {
+      console.log(resp);
+    });
+    r.open("GET", "jobs.json?");
+    r.send();
+  }
+  listJobs();
+});
+</script>
+</head>
+<body>
+
+<div id=content>
+
+<div id=jobs></div>
+
+</div>
+</body>
+</html>

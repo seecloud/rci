@@ -17,6 +17,7 @@ import base64
 from collections import defaultdict
 import functools
 import json
+import pkgutil
 import dbm
 import os
 
@@ -117,9 +118,13 @@ class Service:
         self.root = root
         self.cfg = kwargs
         self.url = url = kwargs.get("url", "/github/")
+        return
         self.root.http.add_route("GET", url + "oauth2", self._handle_oauth2)
-        self.root.http.add_route("GET", url + "login", self._handle_registraion)
+        self.root.http.add_route("GET", url + "authorize", self._handle_registraion)
+        self.root.http.add_route("GET", url + "login", self._handle_login)
         self.root.http.add_route("GET", url + "settings", self._handle_settings)
+        self.root.http.add_route("GET", url + "jobs", self._handle_jobs)
+        self.root.http.add_route("GET", url + "jobs.json", self._handle_jobs_json)
         self.root.http.add_route("POST", url + "webhook", self._handle_webhook)
         self.root.http.add_route("POST", url + "add_org_webhook", self._handle_add_org_webhook)
         self.oauth = github.OAuth(**root.config.secrets[self.cfg["name"]])
@@ -181,15 +186,26 @@ class Service:
         session = self.ss.session(request)
         self.users[str(user_data["id"])] = client.token
         session.data["token"] = client.token
+        session.data["user"] = user_data["login"]
         response = web.HTTPFound(self.url + "/settings")
         return response
 
+    async def _handle_jobs(self, request):
+        client = self._get_client(request)
+        data = await client.get("user")
+        orgs = await client.get("user/orgs")
+        response = pkgutil.get_data("rci.services.github", "jobs.html").decode("utf8")
+        return web.Response(text=response, content_type="text/html")
+
+    async def _handle_jobs_json(self, request):
+        session = self.ss.session(request)
+        print(session.data)
+        client = self._get_client(request)
+
     async def _handle_settings(self, request):
         import jinja2
-        import pkgutil
         template = jinja2.Template(
-                pkgutil.get_data("rci.services",
-                                 "github_settings.html").decode("utf8"))
+                pkgutil.get_data("rci.services.github", "github_settings.html").decode("utf8"))
         client = self._get_client(request)
         if client is None:
             return web.HTTPUnauthorized(text="fail")
@@ -214,6 +230,10 @@ class Service:
         org_data = await client.get("/orgs/:org", request.POST["org"])
         self.orgs[str(org_data["id"]).encode("ascii")] = client.token
         return web.Response(text=str(resp))
+
+    async def _handle_login(self, request):
+        url = self.oauth.generate_request_url(("read:org", ))
+        return web.HTTPFound(url)
 
     async def _handle_registraion(self, request):
         url = self.oauth.generate_request_url(
