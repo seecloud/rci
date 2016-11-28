@@ -6,13 +6,14 @@ td { border: 1px solid; }
 div#elJobLog { background-color: black; color: white; font: 14pt monospace; height: 4in; overflow-y: scroll; }
 div#elJobLog > p,span { margin: 0; padding: 0; }
 div#elJobLog > p.err,span.err { color: red; }
-div#elPanel form {display: inline; }
-
+div#elPanel form,ul,li{display: inline; }
+div#elPanel a:hover { cursor:pointer; }
 </style>
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
 
   var _newLine = false;
+  var currentTabElement = elTabRunningJobs;
   var ws;
   var wsMsgHandlers = {
     jobInfo: function(job) {
@@ -22,8 +23,13 @@ document.addEventListener("DOMContentLoaded", function() {
     consoleData: function(data) {
       consoleWrite(data[0], data[1]);
     },
+    jobsConfigs: function(data) {
+      updateStartJobForm(data);
+    },
+    jobStartOk: function(job) {
+      alert("Started " + job);
+    },
     authOk: function(auth) {
-      console.log(auth);
       if(auth.login !== null) {
         elLogin.style.display = "none";
         elLogout.style.display = "inline";
@@ -35,13 +41,11 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   function sendWS(data) {
-    console.log(data);
     ws.send(JSON.stringify(data));
   }
 
   function apiOnline() {
     bits = window.location.hash.split("/");
-    console.log(bits);
     if (bits[0] == "#job") {
       sendWS(["getJobInfo", [bits[1]]]);
     }
@@ -55,7 +59,6 @@ document.addEventListener("DOMContentLoaded", function() {
     ws = new WebSocket(location.protocol == 'https:' ? 'wss://' : 'ws://' + window.location.host + window.location.pathname + "api.sock");
     ws.onmessage = function(e) {
       var msg = JSON.parse(e.data);
-      console.log(msg);
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
@@ -96,31 +99,93 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  function switchTab(element) {
+    currentTabElement.style.display = "none";
+    element.style.display = "block";
+    currentTabElement = element;
+  }
+
+  function _createTrNameValuePair(table, name, value) {
+    var tr = table.appendChild(document.createElement("tr"));
+    var tdNameName = tr.appendChild(document.createElement("td"));
+    var tdNameValue = tr.appendChild(document.createElement("td"));
+    tdNameName.appendChild(document.createTextNode(name));
+    tdNameValue.appendChild(value);
+  }
+
+  function _createScriptsMultisel(scripts) {
+    var select = document.createElement("select");
+    select.multiple = true;
+    for(var i=0; i < scripts.length; i++) {
+      var option = document.createElement("option");
+      option.value = scripts[i];
+      option.selected = true;
+      option.appendChild(document.createTextNode(scripts[i]));
+      select.appendChild(option);
+    }
+    return select;
+  }
+
+  function updateStartJobForm(data) {
+    for(var i=0; i<data.jobs.length; i++) {
+      var job = data.jobs[i];
+      var table = document.createElement("table");
+      _createTrNameValuePair(table, "name", document.createTextNode(job.name));
+      _createTrNameValuePair(table, "provider", document.createTextNode(job.provider));
+      _createTrNameValuePair(table, "cluster", document.createTextNode(job.cluster));
+
+      button = document.createElement("button");
+      button.appendChild(document.createTextNode("Start"));
+      button.addEventListener("click", function () {
+        sendWS(["startJob", [job.name]]);
+        switchTab(elTabRunningJobs);
+      });
+      var tr = document.createElement("tr");
+      var td = tr.appendChild(document.createElement("td"));
+      td.colSpan = 2;
+      td.appendChild(button);
+      table.appendChild(tr);
+
+      elTabStartJob.appendChild(table);
+    }
+  }
+
   connectWS();
-  parseOutput("+ ps\n", 1);
-  parseOutput("ps: command not found\n", 2);
-  parseOutput("sup ", 1);
-  parseOutput("man \n", 1);
-  setInterval(function() { parseOutput("+ env\nOK=lol\nLANG=c\nHEIGHT=" + elJobLog.scrollHeight + "\n"); }, 800);
+  showStartJob.addEventListener("click", function() {
+    sendWS(["getJobsConfigs", []]);
+    switchTab(elTabStartJob);
+  });
+  showRunningTasks.addEventListener("click", function() {
+    switchTab(elTabRunningJobs);
+  });
 
 });
 </script>
 </head>
 <body>
-
-
 <div id=elContent>
 
-<div id=elPanel>[<a id=showRunningTasks>Running jobs</a>][<a id=showFinishedTasks>Finished jobs</a>]
+<div id=elPanel>
 <form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
 <form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
+<ul>
+  <li><a id=showRunningTasks>Running jobs</a></li>
+  <li><a id=showFinishedTasks>Finished jobs</a></li>
+  <li><a id=showStartJob>Start job</a></li>
+</ul>
 </div>
 
-<div id=elTabTasks></div>
-
-<div id=elTabJobStatus>
+<div id=elTabJobStatus style="display: none;">
     <h1><span id=elJobName></span>[<span id=elJobStatus></span>]</h1>
   <div id=elJobLog></div>
+</div>
+
+<div id=elTabRunningJobs>
+  jobs
+</div>
+
+<div id=elTabStartJob style="display: none;">
+  start job
 </div>
 
 </div>

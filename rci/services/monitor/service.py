@@ -52,6 +52,17 @@ class Service:
             "status": "pending",
         }])
 
+    async def _ws_getJobsConfigs(self):
+        data = {
+            "scripts": self.root.config.data["script"],
+            "jobs": list(self.root.config.data["job"].values()),
+        }
+        return json.dumps(["jobsConfigs", data])
+
+    async def _ws_startJob(self, job_name):
+        LOG.info("Starting custom job %s", job_name)
+        return json.dumps(["jobStartOk", job_name])
+
     async def ws_handler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
@@ -88,6 +99,8 @@ class Service:
                 method = getattr(self, "_ws_" + method_name, None)
                 if method:
                     ws.send_str(await method(*args))
+                else:
+                    LOG.info("Unknown websocket method %s", method_name)
             else:
                 print(msg.type, msg)
         return ws
