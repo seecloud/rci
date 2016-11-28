@@ -18,8 +18,11 @@ document.addEventListener("DOMContentLoaded", function() {
       elJobName.innerText = job.name;
       elJobStatus.innerText = job.status;
     },
-    consoleData: function(args) {
-      consoleWrite(args[0], args[1]);
+    consoleData: function(data) {
+      consoleWrite(data[0], data[1]);
+    },
+    authOk: function(auth) {
+      console.log(auth);
     }
   };
 
@@ -64,12 +67,12 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     data.appendChild(document.createTextNode(line));
     elJobLog.appendChild(data);
-    elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 10) + "px";
   }
 
   function parseOutput(line, stream) {
     var lines = line.split("\n");
     var _shouldScroll = elJobLog.scrollTopMax == elJobLog.scrollTop;
+    elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 10) + "px";
     for(var i=0; i<lines.length; i++) {
       if(i>0) {
         _newLine = true;
@@ -97,6 +100,10 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 </head>
 <body>
+
+<div id=elHeader>
+<form action = "login/github"><input type=submit value="Login via github"><form>
+</div>
 
 <div id=elContent>
 

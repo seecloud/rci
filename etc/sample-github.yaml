@@ -11,13 +11,14 @@
     name: monitor
     module: rci.services.monitor
     http_path: monitor
-    auth: github
+    dbm_path: /tmp/rci-monitor
+    cookie_name: rcm
     access:
       allow_anonymous: true
       admin:
         users: [redixin]
         orgs: []
-      user:
+      operator:
         users: []
         orgs: [seecloud, r-ci]
 

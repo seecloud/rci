@@ -14,10 +14,15 @@
 import aiohttp
 from aiohttp import web
 import asyncio
+import base64
+import dbm
 import json
+import os
 import pkgutil
 from concurrent.futures import FIRST_COMPLETED
 import logging
+from rci.common import github
+
 
 LOG = logging
 
@@ -28,7 +33,14 @@ class Service:
         self.root = root
         self.config = config
 
+        store = self.config["dbm_path"]
+        os.makedirs(store, exist_ok=True)
+
         self.http_path = config.get("http_path", "monitor")
+        self.oauth = github.OAuth(**root.config.secrets[self.config["name"]])
+        self.tokens = dbm.open(os.path.join(store, "tokens.db"), "cs")
+        self.sessions = dbm.open(os.path.join(store, "sessions.db"), "cs")
+        self.acl = config["access"]
 
     async def _list_jobs(self):
         pass
@@ -43,6 +55,32 @@ class Service:
     async def ws_handler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
+
+        sid = request.cookies.get(self.config["cookie_name"])
+        client = None
+        admin = False
+        operator = False
+        if sid:
+            login = self.sessions.get(sid)
+            if login:
+                token = self.tokens.get(login).decode("ascii")
+                if token:
+                    client = github.Client(token)
+        if client:
+            login = login.decode("utf8")
+            if login in self.acl["admin"]["users"]:
+                admin = True
+            if login in self.acl["operator"]["users"]:
+                operator = True
+
+            orgs = await client.get("user/orgs")
+            for org in orgs:
+                if org["login"] in self.acl["admin"]["orgs"]:
+                    admin = True
+                if org["login"] in self.acl["operator"]["orgs"]:
+                    operator = True
+
+        ws.send_str(json.dumps(["authOk", {"admin": admin, "operator": operator}]))
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 method_name, args = json.loads(msg.data)
@@ -53,6 +91,17 @@ class Service:
                 print(msg.type, msg)
         return ws
 
+    async def _oauth2_handler(self, request):
+        client = await self.oauth.oauth(request.GET["code"], request.GET["state"])
+        user_data = await client.get("user")
+        login = user_data["login"].encode("utf8")
+        self.tokens[login] = client.token
+        sid = base64.b32encode(os.urandom(15)).decode('ascii')
+        self.sessions[sid] = login
+        resp = web.HTTPFound("/monitor/")
+        resp.set_cookie(self.config["cookie_name"], sid)
+        return resp
+
     async def http_handler(self, request):
         if request.path.endswith("api.sock"):
             return await self.ws_handler(request)
@@ -60,6 +109,12 @@ class Service:
             data = pkgutil.get_data("rci.services.monitor",
                                     "monitor.html").decode("utf8")
             return web.Response(text=data, content_type="text/html")
+        elif request.path.endswith("/login/github"):
+            url = self.oauth.generate_request_url(("read:org", ))
+            print(url)
+            return web.HTTPFound(url)
+        elif request.path.endswith("/oauth2/github"):
+            return (await self._oauth2_handler(request))
         return web.HTTPNotFound()
 
     async def run(self):
