@@ -12,6 +12,7 @@
     module: rci.services.monitor
     http_path: monitor
     dbm_path: /tmp/rci-monitor
+    logs_path: /tmp/rci-logs
     cookie_name: rcm
     access:
       allow_anonymous: true

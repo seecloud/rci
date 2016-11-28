@@ -48,6 +48,24 @@ class Root:
         loop.add_signal_handler(signal.SIGINT, self.stop)
         loop.add_signal_handler(signal.SIGHUP, self.reload_event.set)
 
+        self._task_event_map = {}
+        self.eventid_event_map = {}
+
+    def emit(self, event):
+        task = self.loop.create_task(event.run())
+        self._task_event_map[task] = event
+        self.eventid_event_map[event.id] = event
+        task.add_done_callback(self._event_done_cb)
+
+    def _event_done_cb(self, task):
+        event = self._task_event_map.pop(task)
+        self.eventid_event_map.pop(event.id)
+        self.log.info("Deleting %s", event)
+        try:
+            self.log.info("%s finished with %s", event, task.result())
+        except Exception as ex:
+            self.log.exception("Error in task %s", event)
+
     def stop(self):
         self.loop.remove_signal_handler(signal.SIGINT)
         self.loop.remove_signal_handler(signal.SIGHUP)
@@ -123,7 +141,6 @@ class Root:
         self._running_cleanups.add(fut)
         fut.add_done_callback(self._running_cleanups.remove)
 
-
     def _load_config(self):
         self.config = Config(self)
         self.config.load(self.filename)
@@ -178,7 +195,6 @@ class Root:
     @asyncio.coroutine
     def run(self):
         self._load_config()
-
 
         for service in self.config.iter_instances("service", "Service"):
             self.start_obj(service)

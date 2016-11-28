@@ -29,6 +29,9 @@ document.addEventListener("DOMContentLoaded", function() {
     jobStartOk: function(job) {
       alert("Started " + job);
     },
+    accessDenied: function(method_name) {
+      console.log("denied " + method_name);
+    },
     authOk: function(auth) {
       if(auth.login !== null) {
         elLogin.style.display = "none";
@@ -127,6 +130,9 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function updateStartJobForm(data) {
+    while (elTabStartJob.firstChild) {
+      elTabStartJob.removeChild(elTabStartJob.firstChild);
+    }
     for(var i=0; i<data.jobs.length; i++) {
       var job = data.jobs[i];
       var table = document.createElement("table");

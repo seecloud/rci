@@ -25,7 +25,9 @@ from rci.common import github
 
 
 LOG = logging
-
+ANONYMOUS_METHODS = {}
+OPERATOR_METHODS = {"getJobsConfigs", "startJob"}
+ADMIN_METHODS = {}
 
 class Service:
 
@@ -41,16 +43,27 @@ class Service:
         self.tokens = dbm.open(os.path.join(store, "tokens.db"), "cs")
         self.sessions = dbm.open(os.path.join(store, "sessions.db"), "cs")
         self.acl = config["access"]
+        self.logs_path = config["logs_path"]
+        os.makedirs(self.logs_path, exist_ok=True)
 
     async def _list_jobs(self):
         pass
 
-    async def _ws_getJobInfo(self, job_id):
-        LOG.debug("getJobInfo %s", job_id)
-        return json.dumps(["jobInfo", {
-            "name": "test-something<b>ok</b>",
-            "status": "pending",
-        }])
+    async def _ws_getTaskInfo(self, event_id):
+        event = self.root.eventid_event_map.get(job_id, None)
+        if event:
+            return json.dumps(["taskInfo", {
+                "id": event.id,
+                "jobs": [j.to_dict() for j in event.jobs],
+            }])
+
+    async def _ws_getJobInfo(self, event_id, job_name):
+        event = self.root.eventid_event_map.get(job_id, None)
+        if event:
+            return json.dumps(["jobInfo", {
+                "event": event,
+                "status": "pending",
+            }])
 
     async def _ws_getJobsConfigs(self):
         data = {
@@ -61,7 +74,20 @@ class Service:
 
     async def _ws_startJob(self, job_name):
         LOG.info("Starting custom job %s", job_name)
-        return json.dumps(["jobStartOk", job_name])
+        event = Event(self.root, {
+            "job": job_name,
+            "env": {"GITHUB_REPO": "seecloud/automation", "GITHUB_HEAD": "master"},
+        })
+        self.root.emit(event)
+        return json.dumps(["jobStartOk", event.id])
+
+    async def _check_acl(self, method_name, client, operator, admin):
+        if method_name in ANONYMOUS_METHODS:
+            return True
+        if operator and (method_name in OPERATOR_METHODS):
+            return True
+        if admin and (method_name in ADMIN_METHODS):
+            return True
 
     async def ws_handler(self, request):
         ws = web.WebSocketResponse()
@@ -96,6 +122,9 @@ class Service:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 method_name, args = json.loads(msg.data)
+                if not (await self._check_acl(method_name, client, operator, admin)):
+                    ws.send_str(json.dumps(["accessDenied", method_name]))
+                    continue
                 method = getattr(self, "_ws_" + method_name, None)
                 if method:
                     ws.send_str(await method(*args))
@@ -151,26 +180,40 @@ class Event:
     def __init__(self, root, data):
         self.root = root
         self.data = data
+        self.id = base64.b32encode(os.urandom(10)).decode("ascii")
+        self.jobs = []
+
         self.tasks = []
         self.task_job_map = {}
+
+        self.env = data["env"]
+        self._stop_event = asyncio.Event(loop=self.root.loop)
+
+    def stop(self):
+        self._stop_event.set()
 
     def job_done_cb(self, job, task):
         print("done", job, task)
 
     def get_job_confs(self):
-        return [self.root.conf.data["job"][self.data["job"]]]
+        return [self.root.config.data["job"][self.data["job"]]]
+
+    async def _all_jobs_finished_cb(self):
+        LOG.info("%s job finished cb", self)
 
     async def _start_job(self, jc):
         provider =  self.root.providers[jc["provider"]]
         cluster = await provider.get_cluster(jc["cluster"])
-        job = Job(jc, self.env, cluster)
-        task = self.tasks.append(self.root.loop.create_task(job.run()))
+        job = Job(jc, self.env, cluster, self._stop_event)
+        self.jobs.append(job)
+        task = self.root.loop.create_task(job.run())
+        self.tasks.append(task)
         self.task_job_map[task] = job
 
     async def run(self):
         try:
             for jc in self.get_job_confs():
-                await asyncio.shield(self._start_job(js))
+                await asyncio.shield(self._start_job(jc))
         except asyncio.CancelledError:
             for task in self.task_job_map:
                 task.cancel()
@@ -182,13 +225,21 @@ class Event:
                 job = self.task_job_map.pop(task)
                 self.job_done_cb(job, task)
                 cleanups.append(self.root.loop.create_task(job.cluster.delete()))
+            LOG.info("%s: all jobs finished.", self)
+            await self._all_jobs_finished_cb()
         await asyncio.wait(cleanups)
+        LOG.info("%s: cleanup completed.", self)
 
 
 class Job:
-    def __init__(self, config, env, cluster):
+    def __init__(self, config, env, cluster, stop_event):
         self.config = config
         self.cluster = cluster
 
+        self.stop_event = stop_event
+
     async def run(self):
-        await asyncio.sleep(1)
+        await self.stop_event.wait()
+
+    def to_dict(self):
+        return self.config
