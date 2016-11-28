@@ -14,8 +14,12 @@
 import aiohttp
 from aiohttp import web
 import asyncio
+import json
 import pkgutil
 from concurrent.futures import FIRST_COMPLETED
+import logging
+
+LOG = logging
 
 
 class Service:
@@ -27,12 +31,36 @@ class Service:
         self.http_path = config.get("http_path", "monitor")
 
     async def _list_jobs(self):
-        return 
+        pass
+
+    async def _ws_getJobInfo(self, job_id):
+        LOG.debug("getJobInfo %s", job_id)
+        return json.dumps(["jobInfo", {
+            "name": "test-something<b>ok</b>",
+            "status": "pending",
+        }])
+
+    async def ws_handler(self, request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                method_name, args = json.loads(msg.data)
+                method = getattr(self, "_ws_" + method_name, None)
+                if method:
+                    ws.send_str(await method(*args))
+            else:
+                print(msg.type, msg)
+        return ws
 
     async def http_handler(self, request):
-        data = pkgutil.get_data("rci.services.monitor",
-                                "monitor.html").decode("utf8")
-        return web.Response(text=data, content_type="text/html")
+        if request.path.endswith("api.sock"):
+            return await self.ws_handler(request)
+        if request.path.endswith("/monitor/"):
+            data = pkgutil.get_data("rci.services.monitor",
+                                    "monitor.html").decode("utf8")
+            return web.Response(text=data, content_type="text/html")
+        return web.HTTPNotFound()
 
     async def run(self):
         await asyncio.Event().wait()

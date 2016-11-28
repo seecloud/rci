@@ -3,26 +3,111 @@
 <head>
 <style type=text/css>
 td { border: 1px solid; }
+div#elJobLog { background-color: black; color: white; font: 14pt monospace; height: 4in; overflow-y: scroll; }
+div#elJobLog > p,span { margin: 0; padding: 0; }
+div#elJobLog > p.err,span.err { color: red; }
+
 </style>
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
-  function listJobs() {
-    var r = new XMLHttpRequest();
-    r.addEventListener("load", function (resp) {
-      console.log(resp);
-    });
-    r.open("GET", "jobs.json?");
-    r.send();
+
+  var _newLine = false;
+  var ws;
+  var wsMsgHandlers = {
+    jobInfo: function(job) {
+      elJobName.innerText = job.name;
+      elJobStatus.innerText = job.status;
+    },
+    consoleData: function(args) {
+      consoleWrite(args[0], args[1]);
+    }
+  };
+
+  function sendWS(data) {
+    console.log(data);
+    ws.send(JSON.stringify(data));
   }
-  listJobs();
+
+  function apiOnline() {
+    bits = window.location.hash.split("/");
+    console.log(bits);
+    if (bits[0] == "#job") {
+      sendWS(["getJobInfo", [bits[1]]]);
+    }
+  }
+
+  function apiOffline() {
+    console.log("offline");
+  }
+
+  function connectWS() {
+    ws = new WebSocket(location.protocol == 'https:' ? 'wss://' : 'ws://' + window.location.host + window.location.pathname + "api.sock");
+    ws.onmessage = function(e) {
+      var msg = JSON.parse(e.data);
+      console.log(msg);
+      wsMsgHandlers[msg[0]](msg[1]);
+    };
+    ws.onopen = function(e) {
+      console.log("ok");
+      apiOnline();
+    };
+    ws.onclose = function(e) {
+      apiOffline(false);
+      window.setTimeout(connectWS, 5000);
+    }
+  }
+
+  function consoleWrite(line, stream) {
+    var data = document.createElement(_newLine ? "p" : "span");
+    if (stream == 2) {
+      data.className = "err";
+    }
+    data.appendChild(document.createTextNode(line));
+    elJobLog.appendChild(data);
+    elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 10) + "px";
+  }
+
+  function parseOutput(line, stream) {
+    var lines = line.split("\n");
+    var _shouldScroll = elJobLog.scrollTopMax == elJobLog.scrollTop;
+    for(var i=0; i<lines.length; i++) {
+      if(i>0) {
+        _newLine = true;
+      }
+      if((i+1 == lines.length) && (lines[i] != "")) {
+        _newLine = false;
+      }
+      if (lines[i] != "") {
+        consoleWrite(lines[i], stream);
+      }
+    }
+    if (_shouldScroll) {
+      elJobLog.scrollTop = elJobLog.scrollHeight;
+    }
+  }
+
+  connectWS();
+  parseOutput("+ ps\n", 1);
+  parseOutput("ps: command not found\n", 2);
+  parseOutput("sup ", 1);
+  parseOutput("man \n", 1);
+  setInterval(function() { parseOutput("+ env\nOK=lol\nLANG=c\nHEIGHT=" + elJobLog.scrollHeight + "\n"); }, 800);
+
 });
 </script>
 </head>
 <body>
 
-<div id=content>
+<div id=elContent>
 
-<div id=jobs></div>
+<div id=elPanel>[<a id=showRunningTasks>Running jobs</a>][<a id=showFinishedTasks>Finished jobs</a>]</div>
+
+<div id=elTabTasks></div>
+
+<div id=elTabJobStatus>
+    <h1><span id=elJobName></span>[<span id=elJobStatus></span>]</h1>
+  <div id=elJobLog></div>
+</div>
 
 </div>
 </body>
