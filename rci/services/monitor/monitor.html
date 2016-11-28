@@ -6,6 +6,7 @@ td { border: 1px solid; }
 div#elJobLog { background-color: black; color: white; font: 14pt monospace; height: 4in; overflow-y: scroll; }
 div#elJobLog > p,span { margin: 0; padding: 0; }
 div#elJobLog > p.err,span.err { color: red; }
+div#elPanel form {display: inline; }
 
 </style>
 <script type="text/javascript">
@@ -23,6 +24,13 @@ document.addEventListener("DOMContentLoaded", function() {
     },
     authOk: function(auth) {
       console.log(auth);
+      if(auth.login !== null) {
+        elLogin.style.display = "none";
+        elLogout.style.display = "inline";
+      } else {
+        elLogin.style.display = "inline";
+        elLogout.style.display = "none";
+      }
     }
   };
 
@@ -51,7 +59,6 @@ document.addEventListener("DOMContentLoaded", function() {
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
-      console.log("ok");
       apiOnline();
     };
     ws.onclose = function(e) {
@@ -101,13 +108,13 @@ document.addEventListener("DOMContentLoaded", function() {
 </head>
 <body>
 
-<div id=elHeader>
-<form action = "login/github"><input type=submit value="Login via github"><form>
-</div>
 
 <div id=elContent>
 
-<div id=elPanel>[<a id=showRunningTasks>Running jobs</a>][<a id=showFinishedTasks>Finished jobs</a>]</div>
+<div id=elPanel>[<a id=showRunningTasks>Running jobs</a>][<a id=showFinishedTasks>Finished jobs</a>]
+<form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
+<form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
+</div>
 
 <div id=elTabTasks></div>
 

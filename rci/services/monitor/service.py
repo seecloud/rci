@@ -60,6 +60,7 @@ class Service:
         client = None
         admin = False
         operator = False
+        login = None
         if sid:
             login = self.sessions.get(sid)
             if login:
@@ -80,7 +81,7 @@ class Service:
                 if org["login"] in self.acl["operator"]["orgs"]:
                     operator = True
 
-        ws.send_str(json.dumps(["authOk", {"admin": admin, "operator": operator}]))
+        ws.send_str(json.dumps(["authOk", {"login": login, "admin": admin, "operator": operator}]))
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 method_name, args = json.loads(msg.data)
@@ -109,12 +110,18 @@ class Service:
             data = pkgutil.get_data("rci.services.monitor",
                                     "monitor.html").decode("utf8")
             return web.Response(text=data, content_type="text/html")
-        elif request.path.endswith("/login/github"):
-            url = self.oauth.generate_request_url(("read:org", ))
-            print(url)
-            return web.HTTPFound(url)
-        elif request.path.endswith("/oauth2/github"):
+        if request.path.endswith("/login/github"):
+            if request.method == "POST":
+                url = self.oauth.generate_request_url(("read:org", ))
+                return web.HTTPFound(url)
+        if request.path.endswith("/oauth2/github"):
             return (await self._oauth2_handler(request))
+        if request.path.endswith("logout"):
+            print(request.method)
+            if request.method == "POST":
+                sid = request.cookies.get(self.config["cookie_name"])
+                del(self.sessions[sid])
+                return web.HTTPFound("/monitor/")
         return web.HTTPNotFound()
 
     async def run(self):
