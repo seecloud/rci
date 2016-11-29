@@ -50,15 +50,24 @@ class Root:
 
         self._task_event_map = {}
         self.eventid_event_map = {}
+        self._services = []
+
+    def _notify_services(self, method_name, *args, **kwargs):
+        for service in self._services:
+            method = getattr(service, method_name, None)
+            if method:
+                method(*args, **kwargs)
 
     def emit(self, event):
         task = self.loop.create_task(event.run())
         self._task_event_map[task] = event
         self.eventid_event_map[event.id] = event
         task.add_done_callback(self._event_done_cb)
+        self._notify_services("cb_task_started", event)
 
     def _event_done_cb(self, task):
         event = self._task_event_map.pop(task)
+        self._notify_services("cb_task_finished", event)
         self.eventid_event_map.pop(event.id)
         self.log.info("Deleting %s", event)
         try:
@@ -87,17 +96,17 @@ class Root:
         except Exception:
             self.log.exception("Exception running %s" % coro)
 
-    def start_task(self, task):
-        """
-        :param Task task:
-        """
-        if task.event.head in self.task_set:
-            self.log.warning("Task '%s' is already running" % task.event.head)
-            return
-        self.task_set.add(task.event.head)
-        fut = self.start_obj(task)
-        self.tasks[fut] = task
-        fut.add_done_callback(self.task_done_cb)
+    def _task_cb(self, task):
+        try:
+            result = task.result()
+        except Exception:
+            self.log.exception("Error in task %s", task)
+        self.log.info("Task finished %s", task)
+
+    def start_coro(self, coro):
+        task = self.loop.create_task(coro)
+        self._tasks.append(task)
+        task.add_done_callback(self._task_cb)
 
     def task_done_cb(self, fut):
         try:
@@ -192,15 +201,19 @@ class Root:
             response = yield from handler(request)
             return response
 
+    def _start_service(self, service):
+        self._services.append(service)
+        self.start_obj(service)
+        http_path = getattr(service, "http_path", None)
+        if http_path:
+            self._http_handlers[http_path] = service.http_handler
+
     @asyncio.coroutine
     def run(self):
         self._load_config()
 
         for service in self.config.iter_instances("service", "Service"):
-            self.start_obj(service)
-            http_path = getattr(service, "http_path", None)
-            if http_path:
-                self._http_handlers[http_path] = service.http_handler
+            self._start_service(service)
 
         listen = self.config.raw_data[0]["core"]["listen"]
 

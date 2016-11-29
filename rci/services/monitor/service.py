@@ -15,6 +15,7 @@ import aiohttp
 from aiohttp import web
 import asyncio
 import base64
+import functools
 import dbm
 import json
 import os
@@ -25,7 +26,7 @@ from rci.common import github
 
 
 LOG = logging
-ANONYMOUS_METHODS = {}
+ANONYMOUS_METHODS = {"listTasks"}
 OPERATOR_METHODS = {"getJobsConfigs", "startJob"}
 ADMIN_METHODS = {}
 
@@ -46,8 +47,22 @@ class Service:
         self.logs_path = config["logs_path"]
         os.makedirs(self.logs_path, exist_ok=True)
 
-    async def _list_jobs(self):
-        pass
+    def cb_console(self, job, stream, data):
+        LOG.debug("%s '%s'", job, data)
+
+    def cb_task_started(self, event):
+        LOG.debug("START %s", event)
+        for job in event.jobs:
+            job.console_callbacks.append(functools.partial(self.cb_console, job))
+
+    def cb_task_finished(self, event):
+        LOG.debug("END %s", event)
+
+    async def _ws_listTasks(self):
+        data = []
+        for event in self.root.eventid_event_map.values():
+            data.append(event.to_dict())
+        return json.dumps(["tasksList", data])
 
     async def _ws_getTaskInfo(self, event_id):
         event = self.root.eventid_event_map.get(job_id, None)
@@ -74,10 +89,9 @@ class Service:
 
     async def _ws_startJob(self, job_name):
         LOG.info("Starting custom job %s", job_name)
-        event = Event(self.root, {
-            "job": job_name,
-            "env": {"GITHUB_REPO": "seecloud/automation", "GITHUB_HEAD": "master"},
-        })
+        env = {"GITHUB_REPO": "seecloud/automation", "GITHUB_HEAD": "master"}
+        data = {"job": job_name}
+        event = Event(self.root, env, data)
         self.root.emit(event)
         return json.dumps(["jobStartOk", event.id])
 
@@ -177,8 +191,9 @@ class Service:
 
 class Event:
 
-    def __init__(self, root, data):
+    def __init__(self, root, env, data):
         self.root = root
+        self.env = env
         self.data = data
         self.id = base64.b32encode(os.urandom(10)).decode("ascii")
         self.jobs = []
@@ -186,7 +201,8 @@ class Event:
         self.tasks = []
         self.task_job_map = {}
 
-        self.env = data["env"]
+        self.jobs = [Job(root, jc, env) for jc in self.get_job_confs()]
+
         self._stop_event = asyncio.Event(loop=self.root.loop)
 
     def stop(self):
@@ -204,42 +220,77 @@ class Event:
     async def _start_job(self, jc):
         provider =  self.root.providers[jc["provider"]]
         cluster = await provider.get_cluster(jc["cluster"])
-        job = Job(jc, self.env, cluster, self._stop_event)
+        job = Job(self.root, jc, self.env)
         self.jobs.append(job)
         task = self.root.loop.create_task(job.run())
         self.tasks.append(task)
         self.task_job_map[task] = job
 
     async def run(self):
-        try:
-            for jc in self.get_job_confs():
-                await asyncio.shield(self._start_job(jc))
-        except asyncio.CancelledError:
-            for task in self.task_job_map:
-                task.cancel()
-        cleanups = []
+        for job in self.jobs:
+            task = self.root.loop.create_task(job.run())
+            self.task_job_map[task] = job
+
         while self.task_job_map:
             done, pending = await asyncio.wait(list(self.task_job_map.keys()),
                                                return_when=FIRST_COMPLETED)
             for task in done:
                 job = self.task_job_map.pop(task)
                 self.job_done_cb(job, task)
-                cleanups.append(self.root.loop.create_task(job.cluster.delete()))
-            LOG.info("%s: all jobs finished.", self)
-            await self._all_jobs_finished_cb()
-        await asyncio.wait(cleanups)
-        LOG.info("%s: cleanup completed.", self)
+                self.root.start_coro(job.cleanup())
+        LOG.info("%s: all jobs finished.", self)
+
+    def to_dict(self):
+        return {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
 
 
 class Job:
-    def __init__(self, config, env, cluster, stop_event):
+    def __init__(self, root, config, env):
+        self.root = root
         self.config = config
-        self.cluster = cluster
+        self.env = env
+        self.console_callbacks = []
+        self.status_callbacks = []
+        self.status = "queued"
 
-        self.stop_event = stop_event
+    async def _get_cluster(self):
+        provider = self.root.providers[self.config["provider"]]
+        self.cluster = await provider.get_cluster(self.config["cluster"])
+
+    def _console_cb(self, stream, data):
+        for cb in self.console_callbacks:
+            cb(stream, data)
+
+    def _update_status(self, status):
+        self.status = status
+        for cb in self.status_callbacks:
+            cb(status)
 
     async def run(self):
-        await self.stop_event.wait()
+        _out_cb = functools.partial(self._console_cb, 1)
+        _err_cb = functools.partial(self._console_cb, 2)
+        self._update_status("boot")
+        await asyncio.shield(self._get_cluster())
+        for vm, scripts in self.config["scripts"].items():
+            vm = self.cluster.vms[vm]
+            for script_name in scripts:
+                script = self.root.config.get_script(script_name)
+                self.root.log.debug("%s: running script: %s", self, script)
+                await vm.ssh.wait()
+                self._update_status("running " + script_name)
+                error = await vm.run_script(script, self.env, _out_cb, _err_cb)
+                if error:
+                    self.root.log.debug("%s error in script %s", self, script)
+                    return error
+        self.root.log.debug("%s all scripts success", self)
+
+    async def cleanup(self):
+        await self.cluster.delete()
 
     def to_dict(self):
         return self.config
+
+    def __str__(self):
+        return "<Job %s>" % self.config["name"]
+
+    __repr__ = __unicode__ = __str__

@@ -2,12 +2,22 @@
 <html>
 <head>
 <style type=text/css>
+
+body {margin: 0; padding: 0; font-family: sans-serif; }
 td { border: 1px solid; }
 div#elJobLog { background-color: black; color: white; font: 14pt monospace; height: 4in; overflow-y: scroll; }
 div#elJobLog > p,span { margin: 0; padding: 0; }
 div#elJobLog > p.err,span.err { color: red; }
-div#elPanel form,ul,li{display: inline; }
+div#elPanel li { border: 1px solid #aaa; }
+div#elPanel li:hover { background-color: #ddd; }
+div#elPanel form,ul,li { display: inline; padding: 0; }
+div#elPanel form { display: inline; float: right; }
+div#elPanel span { margin-left: 1em; }
+div#elPanel { width: 100%; background-color: #eee; height: 2em; border-bottom: 1px solid #bbb; padding-top: 6pt; padding-bottom: 0; }
 div#elPanel a:hover { cursor:pointer; }
+ul#elTabs { margin-left: 5em; }
+ul#elTabs li { background-color: white; margin: 1pt; padding: 2pt; }
+
 </style>
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
@@ -19,6 +29,11 @@ document.addEventListener("DOMContentLoaded", function() {
     jobInfo: function(job) {
       elJobName.innerText = job.name;
       elJobStatus.innerText = job.status;
+    },
+    tasksList: function(tasks) {
+      for(var i=0; i<tasks.length; i++) {
+        console.log(tasks[i]);
+      }
     },
     consoleData: function(data) {
       consoleWrite(data[0], data[1]);
@@ -48,6 +63,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function apiOnline() {
+    elOnline.style.color = "green";
     bits = window.location.hash.split("/");
     if (bits[0] == "#job") {
       sendWS(["getJobInfo", [bits[1]]]);
@@ -55,11 +71,12 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   function apiOffline() {
+    elOnline.style.color = "red";
     console.log("offline");
   }
 
   function connectWS() {
-    ws = new WebSocket(location.protocol == 'https:' ? 'wss://' : 'ws://' + window.location.host + window.location.pathname + "api.sock");
+    ws = new WebSocket((location.protocol == 'https:' ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + "api.sock");
     ws.onmessage = function(e) {
       var msg = JSON.parse(e.data);
       wsMsgHandlers[msg[0]](msg[1]);
@@ -129,10 +146,14 @@ document.addEventListener("DOMContentLoaded", function() {
     return select;
   }
 
-  function updateStartJobForm(data) {
-    while (elTabStartJob.firstChild) {
-      elTabStartJob.removeChild(elTabStartJob.firstChild);
+  function cleanupElement(element) {
+    while (element.firstChild) {
+      element.removeChild(element.firstChild);
     }
+  }
+
+  function updateStartJobForm(data) {
+    cleanupElement(elTabStartJob);
     for(var i=0; i<data.jobs.length; i++) {
       var job = data.jobs[i];
       var table = document.createElement("table");
@@ -162,6 +183,8 @@ document.addEventListener("DOMContentLoaded", function() {
     switchTab(elTabStartJob);
   });
   showRunningTasks.addEventListener("click", function() {
+    cleanupElement(elTabRunningJobs);
+    sendWS(["listTasks", []]);
     switchTab(elTabRunningJobs);
   });
 
@@ -172,13 +195,18 @@ document.addEventListener("DOMContentLoaded", function() {
 <div id=elContent>
 
 <div id=elPanel>
-<form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
-<form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
-<ul>
+
+<span id="elOnline" style="color: red;">&#9679;</span>
+
+<ul id=elTabs>
   <li><a id=showRunningTasks>Running jobs</a></li>
   <li><a id=showFinishedTasks>Finished jobs</a></li>
   <li><a id=showStartJob>Start job</a></li>
 </ul>
+
+<form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
+<form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
+
 </div>
 
 <div id=elTabJobStatus style="display: none;">
@@ -187,11 +215,9 @@ document.addEventListener("DOMContentLoaded", function() {
 </div>
 
 <div id=elTabRunningJobs>
-  jobs
 </div>
 
 <div id=elTabStartJob style="display: none;">
-  start job
 </div>
 
 </div>
