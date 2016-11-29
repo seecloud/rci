@@ -26,9 +26,14 @@ document.addEventListener("DOMContentLoaded", function() {
   var currentTabElement = elTabRunningJobs;
   var ws;
   var wsMsgHandlers = {
-    jobInfo: function(job) {
+    jobConnected: function(job) {
+      console.log(job);
       elJobName.innerText = job.name;
       elJobStatus.innerText = job.status;
+      switchTab(elTabJobStatus);
+    },
+    taskStarted: function(task) {
+      console.log(task);
     },
     tasksList: function(tasks) {
       for(var i=0; i<tasks.length; i++) {
@@ -36,13 +41,14 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     },
     consoleData: function(data) {
-      consoleWrite(data[0], data[1]);
+      parseOutput(data[0], data[1]);
     },
     jobsConfigs: function(data) {
       updateStartJobForm(data);
     },
-    jobStartOk: function(job) {
-      alert("Started " + job);
+    jobStartOk: function(task) {
+      console.log(task);
+      location.hash = "tasks/" + task.id + "/" + task.name;
     },
     accessDenied: function(method_name) {
       console.log("denied " + method_name);
@@ -59,26 +65,24 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   function sendWS(data) {
+    console.log(data);
     ws.send(JSON.stringify(data));
   }
 
   function apiOnline() {
     elOnline.style.color = "green";
-    bits = window.location.hash.split("/");
-    if (bits[0] == "#job") {
-      sendWS(["getJobInfo", [bits[1]]]);
-    }
+    processHash();
   }
 
   function apiOffline() {
     elOnline.style.color = "red";
-    console.log("offline");
   }
 
   function connectWS() {
     ws = new WebSocket((location.protocol == 'https:' ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + "api.sock");
     ws.onmessage = function(e) {
       var msg = JSON.parse(e.data);
+      console.log(msg);
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
@@ -99,7 +103,7 @@ document.addEventListener("DOMContentLoaded", function() {
     elJobLog.appendChild(data);
   }
 
-  function parseOutput(line, stream) {
+  function parseOutput(stream, line) {
     var lines = line.split("\n");
     var _shouldScroll = elJobLog.scrollTopMax == elJobLog.scrollTop;
     elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 10) + "px";
@@ -177,16 +181,27 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  function processHash() {
+    bits = window.location.hash.split("/");
+    console.log(bits);
+    if (bits[0] == "#tasks") {
+      sendWS(["connectJob", [bits[1], bits[2]]]);
+    }
+  }
+
   connectWS();
   showStartJob.addEventListener("click", function() {
     sendWS(["getJobsConfigs", []]);
+    location.hash = "";
     switchTab(elTabStartJob);
   });
   showRunningTasks.addEventListener("click", function() {
+    location.hash = "";
     cleanupElement(elTabRunningJobs);
     sendWS(["listTasks", []]);
     switchTab(elTabRunningJobs);
   });
+  window.onhashchange = processHash;
 
 });
 </script>
@@ -210,7 +225,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </div>
 
 <div id=elTabJobStatus style="display: none;">
-    <h1><span id=elJobName></span>[<span id=elJobStatus></span>]</h1>
+  <h1><span id=elJobName></span>[<span id=elJobStatus></span>]</h1>
   <div id=elJobLog></div>
 </div>
 

@@ -26,7 +26,7 @@ from rci.common import github
 
 
 LOG = logging
-ANONYMOUS_METHODS = {"listTasks"}
+ANONYMOUS_METHODS = {"listTasks", "connectJob"}
 OPERATOR_METHODS = {"getJobsConfigs", "startJob"}
 ADMIN_METHODS = {}
 
@@ -46,25 +46,32 @@ class Service:
         self.acl = config["access"]
         self.logs_path = config["logs_path"]
         os.makedirs(self.logs_path, exist_ok=True)
+        self.connections = []
+
+    def _broadcast(self, data):
+        data = json.dumps(data)
+        for ws in self.connections:
+            ws.send_str(data)
 
     def cb_console(self, job, stream, data):
         LOG.debug("%s '%s'", job, data)
 
     def cb_task_started(self, event):
         LOG.debug("START %s", event)
+        self._broadcast(["taskStarted", event.to_dict()])
         for job in event.jobs:
             job.console_callbacks.append(functools.partial(self.cb_console, job))
 
     def cb_task_finished(self, event):
         LOG.debug("END %s", event)
 
-    async def _ws_listTasks(self):
+    async def _ws_listTasks(self, ws):
         data = []
         for event in self.root.eventid_event_map.values():
             data.append(event.to_dict())
         return json.dumps(["tasksList", data])
 
-    async def _ws_getTaskInfo(self, event_id):
+    async def _ws_getTaskInfo(self, ws, event_id):
         event = self.root.eventid_event_map.get(job_id, None)
         if event:
             return json.dumps(["taskInfo", {
@@ -72,28 +79,34 @@ class Service:
                 "jobs": [j.to_dict() for j in event.jobs],
             }])
 
-    async def _ws_getJobInfo(self, event_id, job_name):
-        event = self.root.eventid_event_map.get(job_id, None)
+    async def _ws_connectJob(self, ws, event_id, job_name):
+        event = self.root.eventid_event_map.get(event_id, None)
         if event:
-            return json.dumps(["jobInfo", {
-                "event": event,
-                "status": "pending",
-            }])
+            def cb(stream, data):
+                try:
+                    ws.send_str(json.dumps(["consoleData", [stream, data]]))
+                except Exception:
+                    LOG.exception("error sending console data")
+            job = event.name_job_map[job_name]
+            job.console_callbacks.append(cb)
+            return json.dumps(["jobConnected", event.to_dict()])
+        else:
+            return "404"
 
-    async def _ws_getJobsConfigs(self):
+    async def _ws_getJobsConfigs(self, ws):
         data = {
             "scripts": self.root.config.data["script"],
             "jobs": list(self.root.config.data["job"].values()),
         }
         return json.dumps(["jobsConfigs", data])
 
-    async def _ws_startJob(self, job_name):
+    async def _ws_startJob(self, ws, job_name):
         LOG.info("Starting custom job %s", job_name)
         env = {"GITHUB_REPO": "seecloud/automation", "GITHUB_HEAD": "master"}
         data = {"job": job_name}
         event = Event(self.root, env, data)
         self.root.emit(event)
-        return json.dumps(["jobStartOk", event.id])
+        return json.dumps(["jobStartOk", event.to_dict()])
 
     async def _check_acl(self, method_name, client, operator, admin):
         if method_name in ANONYMOUS_METHODS:
@@ -133,6 +146,7 @@ class Service:
                     operator = True
 
         ws.send_str(json.dumps(["authOk", {"login": login, "admin": admin, "operator": operator}]))
+        self.connections.append(ws)
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 method_name, args = json.loads(msg.data)
@@ -141,11 +155,12 @@ class Service:
                     continue
                 method = getattr(self, "_ws_" + method_name, None)
                 if method:
-                    ws.send_str(await method(*args))
+                    ws.send_str(await method(ws, *args))
                 else:
                     LOG.info("Unknown websocket method %s", method_name)
             else:
                 print(msg.type, msg)
+        self.connections.remove(ws)
         return ws
 
     async def _oauth2_handler(self, request):
@@ -200,9 +215,11 @@ class Event:
 
         self.tasks = []
         self.task_job_map = {}
+        self.name_job_map = {}
 
         self.jobs = [Job(root, jc, env) for jc in self.get_job_confs()]
-
+        self.name = data["job"]
+        self.name_job_map[self.name] = self.jobs[0]
         self._stop_event = asyncio.Event(loop=self.root.loop)
 
     def stop(self):
@@ -241,7 +258,10 @@ class Event:
         LOG.info("%s: all jobs finished.", self)
 
     def to_dict(self):
-        return {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
+        jobs = {}
+        for job in self.jobs:
+            jobs[job.config["name"]] = job.to_dict()
+        return {"id": self.id, "name": self.name, "jobs": jobs}
 
 
 class Job:
@@ -288,7 +308,10 @@ class Job:
         await self.cluster.delete()
 
     def to_dict(self):
-        return self.config
+        return {
+            "name": self.config["name"],
+            "status": self.status,
+        }
 
     def __str__(self):
         return "<Job %s>" % self.config["name"]
