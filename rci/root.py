@@ -48,7 +48,7 @@ class Root:
         loop.add_signal_handler(signal.SIGINT, self.stop)
         loop.add_signal_handler(signal.SIGHUP, self.reload_event.set)
 
-        self._task_event_map = {}
+        self.task_event_map = {}
         self.eventid_event_map = {}
         self._services = []
 
@@ -56,17 +56,20 @@ class Root:
         for service in self._services:
             method = getattr(service, method_name, None)
             if method:
-                method(*args, **kwargs)
+                try:
+                    method(*args, **kwargs)
+                except Exception:
+                    self.log.exception("Failed to notify %s", method)
 
     def emit(self, event):
         task = self.loop.create_task(event.run())
-        self._task_event_map[task] = event
+        self.task_event_map[task] = event
         self.eventid_event_map[event.id] = event
         task.add_done_callback(self._event_done_cb)
         self._notify_services("cb_task_started", event)
 
     def _event_done_cb(self, task):
-        event = self._task_event_map.pop(task)
+        event = self.task_event_map.pop(task)
         self._notify_services("cb_task_finished", event)
         self.eventid_event_map.pop(event.id)
         self.log.info("Deleting %s", event)
