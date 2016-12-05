@@ -126,7 +126,7 @@ class Client:
             self.token_data = await r.json()
             self.headers["X-Auth-Token"] = self.token_data["access"]["token"]["id"]
         self.loop.call_later(self.token_renew_delay, self.loop.create_task,
-                             self.login(token=self.headers["X-Auth-Token"]))
+                             self.login(password=password))
 
     async def list_images(self):
         url = self.get_endpoint("image")

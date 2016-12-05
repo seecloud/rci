@@ -230,7 +230,7 @@
 - job:
     name: env
     provider: os
-    cluster: test_cluster
+    cluster: seecloud_cluster
     scripts:
       master:
         - git-checkout
