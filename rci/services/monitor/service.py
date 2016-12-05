@@ -243,6 +243,9 @@ class Event:
     def job_done_cb(self, job, task):
         print("done", job, task)
 
+    def update_status_cb(self, job):
+        pass
+
     def get_job_confs(self):
         return [self.root.config.data["job"][self.data["job"]]]
 
@@ -252,7 +255,7 @@ class Event:
     async def _start_job(self, jc):
         provider =  self.root.providers[jc["provider"]]
         cluster = await provider.get_cluster(jc["cluster"])
-        job = Job(self.root, jc, self.env)
+        job = Job(self, jc, self.env)
         self.jobs.append(job)
         task = self.root.loop.create_task(job.run())
         self.tasks.append(task)
@@ -282,8 +285,9 @@ class Event:
 
 
 class Job:
-    def __init__(self, root, config, env):
-        self.root = root
+    def __init__(self, event, config, env):
+        self.event = event
+        self.root = event.root
         self.config = config
         self.env = env
         self.console_callbacks = []
@@ -300,6 +304,7 @@ class Job:
 
     def _update_status(self, status):
         self.status = status
+        self.event.update_status_cb(self)
         for cb in self.status_callbacks:
             cb(status)
 
