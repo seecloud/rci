@@ -59,6 +59,10 @@ class Service:
     def cb_console(self, job, stream, data):
         LOG.debug("%s '%s'", job, data)
 
+    def cb_task_updated(self, event):
+        LOG.debug("UPDATE %s", event)
+        self._broadcast(["taskUpdate", event.to_dict()])
+
     def cb_task_started(self, event):
         LOG.debug("START %s", event)
         self._broadcast(["taskUpdate", event.to_dict()])
@@ -244,11 +248,13 @@ class Event:
         try:
             task.result()
         except Exception as ex:
+            job._update_status("error")
             LOG.exception("Error running job")
         print("done", job, task)
 
     def update_status_cb(self, job):
-        pass
+        LOG.debug("Job updated %s", job)
+        self.root.notify_services("cb_task_updated", self)
 
     def get_job_confs(self):
         return [self.root.config.data["job"][self.data["job"]]]
@@ -319,7 +325,9 @@ class Job:
                                             _out_cb, _err_cb)
                 if error:
                     self.root.log.debug("%s error in script %s", self, script)
+                    self._update_status("failure")
                     return error
+        self._update_status("success")
         self.root.log.debug("%s all scripts success", self)
 
     async def cleanup(self):

@@ -52,7 +52,7 @@ class Root:
         self.eventid_event_map = {}
         self._services = []
 
-    def _notify_services(self, method_name, *args, **kwargs):
+    def notify_services(self, method_name, *args, **kwargs):
         for service in self._services:
             method = getattr(service, method_name, None)
             if method:
@@ -66,11 +66,11 @@ class Root:
         self.task_event_map[task] = event
         self.eventid_event_map[event.id] = event
         task.add_done_callback(self._event_done_cb)
-        self._notify_services("cb_task_started", event)
+        self.notify_services("cb_task_started", event)
 
     def _event_done_cb(self, task):
         event = self.task_event_map.pop(task)
-        self._notify_services("cb_task_finished", event)
+        self.notify_services("cb_task_finished", event)
         self.eventid_event_map.pop(event.id)
         self.log.info("Deleting %s", event)
         try:

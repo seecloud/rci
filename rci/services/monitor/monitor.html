@@ -3,10 +3,11 @@
 <head>
 <style type=text/css>
 
-body {margin: 0; padding: 0; font-family: sans-serif; }
+body { margin: 0; padding: 0; font-family: sans-serif; }
 td { border: 1px solid; }
-div#elJobLog { background-color: black; color: white; font: 10pt monospace; height: 4in; overflow-y: scroll; }
-div#elJobLog > p,span { margin: 0; padding: 0; }
+div#elContent { margin: 0 2in; padding: 1em; background-color: white; }
+div#elJobLog { background-color: black; color: white; font: 10pt monospace; height: 4in; overflow: scroll; }
+div#elJobLog > p,span { margin: 0; padding: 0; white-space: pre; }
 div#elJobLog > p.err,span.err { color: red; }
 div#elPanel li { border: 1px solid #aaa; }
 div#elPanel li:hover { background-color: #ddd; }
@@ -33,7 +34,8 @@ document.addEventListener("DOMContentLoaded", function() {
       switchTab(elTabJobStatus);
       connectedTaskJob = args;
       elJobName.innerText = task.name + "::" + job_name;
-      elJobStatus.innerText = task.status;
+      elJobState.innerText = task.status;
+      cleanupElement(elJobLog);
     },
     jobDisconnected: function(args) {
       connectedTaskJob = null;
@@ -100,6 +102,9 @@ document.addEventListener("DOMContentLoaded", function() {
       createTaskElement(task);
     } else {
       updateTaskElement(task, _elTask);
+    }
+    if (connectedTaskJob !== null && task.id == connectedTaskJob[0].id) {
+      elJobState.innerText = task.jobs[connectedTaskJob[1]].status;
     }
   }
 
@@ -231,34 +236,27 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 </head>
 <body>
-<div id=elContent>
 
 <div id=elPanel>
-
 <span id="elOnline" style="color: red;">&#9679;</span>
-
+<img id=elAvatar></img>
 <ul id=elTabs>
   <li><a id=showRunningTasks>Running jobs</a></li>
   <li><a id=showFinishedTasks>Finished jobs</a></li>
   <li><a id=showStartJob>Start job</a></li>
 </ul>
-
 <form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
 <form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
-
 </div>
 
+<div id=elContent>
 <div id=elTabJobStatus style="display: none;">
-  <h1><span id=elJobName></span>[<span id=elJobStatus></span>]</h1>
+  <h1><span id=elJobName></span>[<span id=elJobState></span>]</h1>
   <div id=elJobLog></div>
 </div>
-
-<div id=elTabRunningJobs>
+<div id=elTabRunningJobs></div>
+<div id=elTabStartJob style="display: none;"></div>
 </div>
 
-<div id=elTabStartJob style="display: none;">
-</div>
-
-</div>
 </body>
 </html>
