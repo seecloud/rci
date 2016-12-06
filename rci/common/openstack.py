@@ -17,6 +17,7 @@ import base64
 import json
 import ssl
 import logging
+import urllib.parse
 
 import aiohttp
 
@@ -149,15 +150,36 @@ class Client:
     async def delete_network(self, network_id):
         return await self._delete("network", "/v2.0/networks/" + network_id)
 
-    async def create_subnet(self, network_id, cidr="10.1.1.0/24"):
-        return await self._post("network", "/v2.0/subnets", {
+    async def create_subnet(self, network_id, cidr="10.1.1.0/24",
+                            disable_gateway=False):
+        body = {
             "subnet": {
                 "network_id": network_id,
-                "gateway_ip": None,
                 "cidr": cidr,
                 "ip_version": 4,
             }
+        }
+        if disable_gateway:
+            body["subnet"]["gateway_ip"] = None
+        return await self._post("network", "/v2.0/subnets", body)
+
+    async def list_ports(self, **kwargs):
+        query = urllib.parse.urlencode(kwargs)
+        return await self._get("network", "/v2.0/ports?" + query)
+
+    async def create_port(self, name, network_id, device_id):
+        return await self._post("network", "/v2.0/ports", {
+            "name": name,
+            "network_id": network_id,
+            "device_id": device_id,
+            "admin_state_up": True,
+            "allowed_address_pairs": ["0.0.0.0/0"],
         })
+
+    async def update_port(self, port_id, **kwargs):
+        return await self._put("network", "/v2.0/ports/" + port_id,
+                               {"port": kwargs})
+
 
     async def list_flavors(self):
         url = self.get_endpoint("compute") + "/flavors"
@@ -168,7 +190,7 @@ class Client:
                             key_name, user_data=""):
         if user_data:
             user_data = base64.b64encode(user_data.encode("utf8")).decode("ascii")
-        return await self._post("compute", "/servers", {
+        data = await self._post("compute", "/servers", {
             "server": {
                 "name": name,
                 "imageRef": imageRef,
@@ -178,6 +200,7 @@ class Client:
                 "user_data": user_data,
             }
         })
+        return data
 
     async def boot_server(self, name, image, flavor):
         images = await self.list_images()
@@ -239,12 +262,20 @@ class Client:
             if current_status in error_statuses:
                 raise OpenStackError("VM error %s" % server)
             else:
-                LOG.debug("Waiting server %s status %s", server_id, current_status)
+                LOG.debug("Waiting for server %s status %s", server_id,
+                          current_status)
             retries -= 1
         raise OpenStackError("Timeout waiting for server %s" % server_id)
 
+    async def _put(self, service, url, payload):
+        LOG.info("PUT %s %s", url, json.dumps(payload))
+        async with self.session.put(self.get_endpoint(service) + url,
+                                    headers=self.headers,
+                                    data=json.dumps(payload)) as r:
+            return await _process_response(r)
 
     async def _post(self, service, url, payload):
+        LOG.info("POST %s %s", url, json.dumps(payload))
         async with self.session.post(self.get_endpoint(service) + url,
                                      headers=self.headers,
                                      data=json.dumps(payload)) as r:
@@ -253,7 +284,7 @@ class Client:
     async def _get(self, service, url):
         async with self.session.get(self.get_endpoint(service) + url,
                                     headers=self.headers) as r:
-            LOG.debug(service, url)
+            LOG.debug("GET %s %s", service, url)
             return (await r.json())
 
     async def _delete(self, service, url):

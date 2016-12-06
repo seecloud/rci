@@ -14,6 +14,9 @@
 
 
 import abc
+import logging
+
+LOG = logging
 
 
 class VM(abc.ABC):
@@ -35,11 +38,15 @@ class VM(abc.ABC):
 
 class SSHVM(VM):
 
-    async def run_script(self, script, env, stdout_cb, stderr_cb):
+    async def run_script(self, loop, script, env, stdout_cb, stderr_cb):
         cmd = script.get("interpreter", "/bin/bash -xe -s")
-        e = await self.ssh.run(cmd, stdin=script["data"], env=env,
-                               stdout=stdout_cb, stderr=stderr_cb,
-                               check=False)
+        username = username=script.get("username")
+        LOG.debug("Getting ssh for user %s (%s)", username, self)
+        ssh = self.get_ssh(loop, username=username)
+        await ssh.wait()
+        e = await ssh.run(cmd, stdin=script["data"], env=env,
+                          stdout=stdout_cb, stderr=stderr_cb,
+                          check=False)
         if e:
             return e
 
@@ -54,6 +61,9 @@ class Cluster:
 
     async def delete(self):
         return await self.provider.delete_cluster(self)
+
+    def __str__(self):
+        return "<Cluster %s>" % self.vms
 
 
 class Provider(abc.ABC):

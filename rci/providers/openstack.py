@@ -13,10 +13,13 @@
 #    limitations under the License.
 
 import asyncio
+import logging
 
 from rci import base
 from rci.common import openstack
 from rci.common.ssh import SSH
+
+LOG = logging
 
 
 class Provider(base.Provider):
@@ -80,6 +83,7 @@ class Provider(base.Provider):
         await self._ready.wait()
         default_user = self.config["ssh"]["default_username"]
         cluster = base.Cluster(self)
+        servers = []
         for vm_name, vm_conf in self.config["clusters"][name].items():
             networks = []
             for if_type, if_name in vm_conf["interfaces"]:
@@ -98,34 +102,60 @@ class Provider(base.Provider):
                 self.flavor_ids[vm_conf["flavor"]],
                 networks, self.config["ssh"]["key_name"],
                 vm_conf.get("user_data", ""))
-            cluster.vms[vm_name] = VM(server["server"]["id"], vm_name,
-                                      vm_conf.get("username", default_user))
-        for vm in cluster.vms.values():
-            data = await self.client.wait_server(vm.uuid, delay=4, status="ACTIVE",
+            servers.append(server)
+        for server in servers:
+            data = await self.client.wait_server(server["server"]["id"], delay=4,
+                                                 status="ACTIVE",
                                                  error_statuses=["ERROR"])
+            ports = await self.client.list_ports(device_id=data["server"]["id"])
+            kwargs = {"allowed_address_pairs": [{"ip_address": "0.0.0.0/0"}]}
+            for port in ports["ports"]:
+                resp = await self.client.update_port(port["id"], **kwargs)
+                LOG.debug("Updated port %s, %s", port, resp)
             addresses = data["server"]["addresses"]
             ip = addresses.get(self.access_net)
             if ip is not None:
                 ip = ip[0]["addr"]
-                vm.ssh = SSH(self.root.loop, ip,
-                             vm.username,
-                             keys=self.ssh_keys,
-                             jumphost=self.jumphost)
             else:
                 ip = list(addresses.values())[0][0]["addr"]
-            cluster.env["RCI_SERVER_" + vm.name] = ip
+            vm_name = data["server"]["name"]
+            vm_conf = self.config["clusters"][name][vm_name]
+            LOG.debug("Creating VM %s", vm_conf)
+            vm = VM(data["server"]["id"], vm_name, ip=ip,
+                    username=vm_conf.get("username", default_user),
+                    keys=self.ssh_keys,
+                    password=vm_conf.get("password"),
+                    jumphost=self.jumphost)
+            LOG.debug("Created VM %s", vm)
+            cluster.vms[vm_name] = vm
+            cluster.env["RCI_SERVER_" + vm_name] = ip
+        LOG.debug("Created cluster %s", cluster)
         return cluster
 
 
 class VM(base.SSHVM):
 
-    def __init__(self, uuid, name, username=None):
+    def __init__(self, uuid, name, ip=None, username=None,
+                 keys=None, password=None, jumphost=None):
+        self.ip = ip
         self.uuid = uuid
         self.name = name
+        self.keys = keys
         self.username = username
+        self.password = password
+        self.jumphost = jumphost
+
+    def get_ssh(self, loop, username=None):
+        LOG.debug("Creating ssh for %s@%s", username, self.ip)
+        return SSH(loop,
+                   hostname=self.ip,
+                   username=username or self.username,
+                   keys=self.keys,
+                   password=self.password,
+                   jumphost=self.jumphost)
 
     def __str__(self):
-        return "<OpenStack VM %s (%s)>" % (self.uuid, self.ssh)
+        return "<OpenStack VM %s (%s@%s)>" % (self.uuid, self.username, self.ip)
 
     async def publish_path(self, src, dst):
         pass

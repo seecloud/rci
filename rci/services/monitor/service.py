@@ -231,7 +231,7 @@ class Event:
         self.task_job_map = {}
         self.name_job_map = {}
 
-        self.jobs = [Job(root, jc, env) for jc in self.get_job_confs()]
+        self.jobs = [Job(self, jc, env) for jc in self.get_job_confs()]
         self.name = data["job"]
         self.name_job_map[self.name] = self.jobs[0]
         self._stop_event = asyncio.Event(loop=self.root.loop)
@@ -240,7 +240,11 @@ class Event:
     def stop(self):
         self._stop_event.set()
 
-    def job_done_cb(self, job, task):
+    def job_finished_cb(self, job, task):
+        try:
+            task.result()
+        except Exception as ex:
+            LOG.exception("Error running job")
         print("done", job, task)
 
     def update_status_cb(self, job):
@@ -252,15 +256,6 @@ class Event:
     async def _all_jobs_finished_cb(self):
         LOG.info("%s job finished cb", self)
 
-    async def _start_job(self, jc):
-        provider =  self.root.providers[jc["provider"]]
-        cluster = await provider.get_cluster(jc["cluster"])
-        job = Job(self, jc, self.env)
-        self.jobs.append(job)
-        task = self.root.loop.create_task(job.run())
-        self.tasks.append(task)
-        self.task_job_map[task] = job
-
     async def run(self):
         for job in self.jobs:
             task = self.root.loop.create_task(job.run())
@@ -271,7 +266,7 @@ class Event:
                                                return_when=FIRST_COMPLETED)
             for task in done:
                 job = self.task_job_map.pop(task)
-                self.job_done_cb(job, task)
+                self.job_finished_cb(job, task)
                 self.root.start_coro(job.cleanup())
         self.status = "finished"
         LOG.info("%s: all jobs finished.", self)
@@ -297,6 +292,7 @@ class Job:
     async def _get_cluster(self):
         provider = self.root.providers[self.config["provider"]]
         self.cluster = await provider.get_cluster(self.config["cluster"])
+        self.env.update(self.cluster.env)
 
     def _console_cb(self, stream, data):
         for cb in self.console_callbacks:
@@ -318,16 +314,17 @@ class Job:
             for script_name in scripts:
                 script = self.root.config.get_script(script_name)
                 self.root.log.debug("%s: running script: %s", self, script)
-                await vm.ssh.wait()
                 self._update_status("running " + script_name)
-                error = await vm.run_script(script, self.env, _out_cb, _err_cb)
+                error = await vm.run_script(self.root.loop, script, self.env,
+                                            _out_cb, _err_cb)
                 if error:
                     self.root.log.debug("%s error in script %s", self, script)
                     return error
         self.root.log.debug("%s all scripts success", self)
 
     async def cleanup(self):
-        await self.cluster.delete()
+        pass
+        #await self.cluster.delete()
 
     def to_dict(self):
         return {

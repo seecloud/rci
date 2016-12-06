@@ -77,13 +77,14 @@ class SSHClientSession(asyncssh.SSHClientSession, LogDel):
 class SSH(LogDel):
 
     def __init__(self, loop, hostname=None, username=None, keys=None, port=22,
-                 cb=None, jumphost=None):
+                 cb=None, jumphost=None, password=None):
         """
         :param SSH jumphost:
         """
         self.loop = loop
         self.username = username or pwd.getpwuid(os.getuid()).pw_name
         self.hostname = hostname
+        self.password = password
         self.port = port
         self.cb = cb
         self.jumphost = jumphost
@@ -142,6 +143,7 @@ class SSH(LogDel):
             self.conn, self.client = yield from asyncssh.create_connection(
                 functools.partial(SSHClient, self), self.hostname,
                 username=self.username, known_hosts=None,
+                password=self.password,
                 client_keys=self.keys, port=self.port, tunnel=tunnel)
             for args, kwargs in self._forwarded_remote_ports:
                 try:
