@@ -31,6 +31,9 @@ import yaml
 
 class Event(base.Event):
 
+    def get_title(self):
+        return self.data["title"]
+
     def __init__(self, root, raw_event, event_type, client):
         self.root = root
         self.raw_event = raw_event

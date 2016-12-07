@@ -21,8 +21,8 @@ import dbm
 import json
 import os
 import pkgutil
-from concurrent.futures import FIRST_COMPLETED
 import logging
+from rci import base
 from rci import job
 from rci.common import github
 
@@ -241,67 +241,21 @@ class Service:
     __unicode__ = __repr__ = __str__
 
 
-class Event:
+class Event(base.Event):
 
-    def __init__(self, root, env, data):
-        self.root = root
-        self.env = env
-        self.data = data
-        self.id = base64.b32encode(os.urandom(10)).decode("ascii")
-        self.jobs = []
-
-        self.tasks = []
-        self.task_job_map = {}
-        self.name_job_map = {}
-
-        self.jobs = [Job(self, jc, env) for jc in self.get_job_confs()]
-        self.name = data["job"]
-        self.name_job_map[self.name] = self.jobs[0]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.stop_event = asyncio.Event(loop=self.root.loop)
-        self.status = "pending"
 
     def stop(self):
         self.stop_event.set()
 
-    def job_finished_cb(self, job, task):
-        try:
-            task.result()
-        except Exception as ex:
-            job._update_status("error")
-            LOG.exception("Error running job")
-        print("done", job, task)
+    def get_title(self):
+        return self.data["job"]
 
-    def update_status_cb(self, job):
-        LOG.debug("Job updated %s", job)
-        self.root.notify_services("cb_task_updated", self)
-
-    def get_job_confs(self):
-        return [self.root.config.data["job"][self.data["job"]]]
-
-    async def _all_jobs_finished_cb(self):
-        LOG.info("%s job finished cb", self)
-
-    async def run(self):
-        for job in self.jobs:
-            task = self.root.loop.create_task(job.run())
-            self.task_job_map[task] = job
-
-        while self.task_job_map:
-            done, pending = await asyncio.wait(list(self.task_job_map.keys()),
-                                               return_when=FIRST_COMPLETED)
-            for task in done:
-                job = self.task_job_map.pop(task)
-                self.job_finished_cb(job, task)
-                self.root.start_coro(job.cleanup())
-        self.status = "finished"
-        LOG.info("%s: all jobs finished.", self)
-
-    def to_dict(self):
-        jobs = {}
-        for job in self.jobs:
-            jobs[job.config["name"]] = job.to_dict()
-        return {"id": self.id, "name": self.name, "jobs": jobs,
-                "status": self.status}
+    def get_jobs(self):
+        jc = self.root.config.data["job"][self.data["job"]]
+        return [Job(self, jc, self.env)]
 
 
 class Job(job.Job):

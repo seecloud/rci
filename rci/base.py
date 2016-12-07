@@ -14,7 +14,11 @@
 
 
 import abc
+import asyncio
+import base64
+from concurrent.futures import FIRST_COMPLETED
 import logging
+import os
 
 LOG = logging
 
@@ -93,40 +97,61 @@ class Provider(abc.ABC):
 
 class Event(abc.ABC):
 
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        """
-        :param str event_type: one of "cr", "push", "branch"
-        """
-        self.project = project
-        self.head = head
-        self.url = url
-        self.event_type = event_type
+    def __init__(self, root, env, data):
+        self.root = root
         self.env = env
+        self.data = data
+        self.id = base64.b32encode(os.urandom(10)).decode("ascii")
 
-    async def get_local_config(self):
-        """
-        :returns list: parsed json/yaml data
-        """
-        return []
+        self.title = self.get_title()
+        self.jobs = self.get_jobs()
+        self.status = "pending"
 
-    async def job_started_cb(self, job):
+        self.tasks = []
+        self.task_job_map = {}
+
+        self.name_job_map = {}
+        for job in self.jobs:
+            self.name_job_map[job.config["name"]] = job
+
+    @abc.abstractmethod
+    def get_title(self):
         pass
 
-    async def job_finished_cb(self, job, state):
-        """
-        :param str state: one of "success", "failure", "error"
-        """
+    @abc.abstractmethod
+    def get_jobs(self):
         pass
 
-    async def update_job_status(self, job):
-        """
-        :param rci.job.Job job:
-        """
-        pass
+    def update_status_cb(self, job):
+        LOG.debug("Job updated %s", job)
+        self.root.notify_services("cb_task_updated", self)
 
-    async def publish_results(self, jobs):
-        """
-        :param list jobs: list of rci.job.Job instances
-        """
-        pass
+    def job_finished_cb(self, job, task):
+        try:
+            task.result()
+        except Exception as ex:
+            job._update_status("error")
+            LOG.exception("Error running job")
+        LOG.info("Job %s done", job)
+
+    async def run(self):
+        for job in self.jobs:
+            task = self.root.loop.create_task(job.run())
+            self.task_job_map[task] = job
+
+        while self.task_job_map:
+            done, pending = await asyncio.wait(list(self.task_job_map.keys()),
+                                               return_when=FIRST_COMPLETED)
+            for task in done:
+                job = self.task_job_map.pop(task)
+                self.job_finished_cb(job, task)
+                self.root.start_coro(job.cleanup())
+        self.status = "finished"
+        LOG.info("%s: all jobs finished.", self)
+
+    def to_dict(self):
+        jobs = {}
+        for job in self.jobs:
+            jobs[job.config["name"]] = job.to_dict()
+        return {"id": self.id, "name": self.title, "jobs": jobs,
+                "status": self.status}
