@@ -15,7 +15,7 @@ import aiohttp
 from aiohttp import web
 import asyncio
 import base64
-from collections import defaultdict
+import collections
 import functools
 import dbm
 import json
@@ -23,13 +23,14 @@ import os
 import pkgutil
 from concurrent.futures import FIRST_COMPLETED
 import logging
+from rci import job
 from rci.common import github
-
 
 LOG = logging
 ANONYMOUS_METHODS = {"listTasks", "connectJob", "disconnectJob"}
-OPERATOR_METHODS = {"getJobsConfigs", "startJob"}
+OPERATOR_METHODS = {"getJobsConfigs", "startJob", "endJob"}
 ADMIN_METHODS = {}
+
 
 class Service:
 
@@ -48,8 +49,10 @@ class Service:
         self.logs_path = config["logs_path"]
         os.makedirs(self.logs_path, exist_ok=True)
         self.connections = []
-        self._ws_job_listeners = defaultdict(list)
-        self._jobws_cb_map = defaultdict(list)
+        self._ws_job_listeners = collections.defaultdict(list)
+        self._jobws_cb_map = collections.defaultdict(list)
+        self._ws_user_map = {}
+        self._user_events = collections.defaultdict(list)
 
     def _broadcast(self, data):
         data = json.dumps(data)
@@ -114,8 +117,15 @@ class Service:
         env = {"GITHUB_REPO": "seecloud/automation", "GITHUB_HEAD": "master"}
         data = {"job": job_name}
         event = Event(self.root, env, data)
+        self._user_events[self._ws_user_map[ws]["login"]].append(event)
+        ws.send_str(json.dumps(["jobStartOk", event.to_dict()]))
         self.root.emit(event)
-        return json.dumps(["jobStartOk", event.to_dict()])
+
+    async def _ws_endJob(self, ws, event_id):
+        events = self._user_events[self._ws_user_map[ws]["login"]]
+        for event in events:
+            if event.id == event_id:
+                event.stop_event.set()
 
     async def _check_acl(self, method_name, client, operator, admin):
         if method_name in ANONYMOUS_METHODS:
@@ -153,11 +163,17 @@ class Service:
                     admin = True
                 if org["login"] in self.acl["operator"]["orgs"]:
                     operator = True
+        user = {"login": login, "admin": admin, "operator": operator}
+        self._ws_user_map[ws] = user
+        ws.send_str(json.dumps(["authOk", user]))
 
-        ws.send_str(json.dumps(["authOk", {"login": login, "admin": admin, "operator": operator}]))
-        events = []
-        for event in self.root.task_event_map.values():
+        user_events = self._user_events[login]
+        if user_events:
+            ws.send_str(json.dumps(["userTasks", [e.id for e in user_events]]))
+
+        for event in self.root.get_tasks():
             ws.send_str(json.dumps(["taskUpdate", event.to_dict()]))
+
         self.connections.append(ws)
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
@@ -167,11 +183,14 @@ class Service:
                     continue
                 method = getattr(self, "_ws_" + method_name, None)
                 if method:
-                    ws.send_str(await method(ws, *args))
+                    ret = await method(ws, *args)
+                    if ret is not None:
+                        ws.send_str(ret)
                 else:
                     LOG.info("Unknown websocket method %s", method_name)
             else:
                 print(msg.type, msg)
+        self._ws_user_map.pop(ws)
         self.connections.remove(ws)
         self._disconnect_ws_console(ws)
         return ws
@@ -238,11 +257,11 @@ class Event:
         self.jobs = [Job(self, jc, env) for jc in self.get_job_confs()]
         self.name = data["job"]
         self.name_job_map[self.name] = self.jobs[0]
-        self._stop_event = asyncio.Event(loop=self.root.loop)
+        self.stop_event = asyncio.Event(loop=self.root.loop)
         self.status = "pending"
 
     def stop(self):
-        self._stop_event.set()
+        self.stop_event.set()
 
     def job_finished_cb(self, job, task):
         try:
@@ -285,62 +304,8 @@ class Event:
                 "status": self.status}
 
 
-class Job:
-    def __init__(self, event, config, env):
-        self.event = event
-        self.root = event.root
-        self.config = config
-        self.env = env
-        self.console_callbacks = []
-        self.status_callbacks = []
-        self.status = "queued"
-
-    async def _get_cluster(self):
-        provider = self.root.providers[self.config["provider"]]
-        self.cluster = await provider.get_cluster(self.config["cluster"])
-        self.env.update(self.cluster.env)
-
-    def _console_cb(self, stream, data):
-        for cb in self.console_callbacks:
-            cb(stream, data)
-
-    def _update_status(self, status):
-        self.status = status
-        self.event.update_status_cb(self)
-        for cb in self.status_callbacks:
-            cb(status)
+class Job(job.Job):
 
     async def run(self):
-        _out_cb = functools.partial(self._console_cb, 1)
-        _err_cb = functools.partial(self._console_cb, 2)
-        self._update_status("boot")
-        await asyncio.shield(self._get_cluster())
-        for vm, scripts in self.config["scripts"].items():
-            vm = self.cluster.vms[vm]
-            for script_name in scripts:
-                script = self.root.config.get_script(script_name)
-                self.root.log.debug("%s: running script: %s", self, script)
-                self._update_status("running " + script_name)
-                error = await vm.run_script(self.root.loop, script, self.env,
-                                            _out_cb, _err_cb)
-                if error:
-                    self.root.log.debug("%s error in script %s", self, script)
-                    self._update_status("failure")
-                    return error
-        self._update_status("success")
-        self.root.log.debug("%s all scripts success", self)
-
-    async def cleanup(self):
-        pass
-        #await self.cluster.delete()
-
-    def to_dict(self):
-        return {
-            "name": self.config["name"],
-            "status": self.status,
-        }
-
-    def __str__(self):
-        return "<Job %s>" % self.config["name"]
-
-    __repr__ = __unicode__ = __str__
+        await super().run()
+        await self.event.stop_event.wait()

@@ -61,6 +61,10 @@ class Root:
                 except Exception:
                     self.log.exception("Failed to notify %s", method)
 
+    def get_tasks(self):
+        self.log.debug("ALL TASKS %s", self.task_event_map)
+        return self.task_event_map.values()
+
     def emit(self, event):
         task = self.loop.create_task(event.run())
         self.task_event_map[task] = event

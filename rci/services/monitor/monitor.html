@@ -22,10 +22,10 @@ ul#elTabs li { background-color: white; margin: 1pt; padding: 2pt; }
 </style>
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
-
   var _newLine = false;
   var connectedTaskJob = null;
   var currentTabElement = elTabRunningJobs;
+  var userTasks = [];
   var ws;
   var wsMsgHandlers = {
     jobConnected: function(args) {
@@ -40,6 +40,9 @@ document.addEventListener("DOMContentLoaded", function() {
     jobDisconnected: function(args) {
       connectedTaskJob = null;
     },
+    userTasks: function(tasks) {
+      userTasks = tasks;
+    },
     taskUpdate: function(task) {
       handleTaskUpdate(task);
     },
@@ -50,6 +53,8 @@ document.addEventListener("DOMContentLoaded", function() {
       updateStartJobForm(data);
     },
     jobStartOk: function(task) {
+      userTasks.push(task.id);
+      console.log(task.id, task, userTasks);
       location.hash = "tasks/" + task.id + "/" + task.name;
     },
     accessDenied: function(method_name) {
@@ -59,20 +64,24 @@ document.addEventListener("DOMContentLoaded", function() {
       if(auth.login !== null) {
         elLogin.style.display = "none";
         elLogout.style.display = "inline";
+        elMyJobs.style.display = "inline";
       } else {
         elLogin.style.display = "inline";
         elLogout.style.display = "none";
+        elMyJobs.style.display = "none";
       }
     }
   };
 
   function sendWS(data) {
-    console.log(data);
+    console.log("WS <-", data);
     ws.send(JSON.stringify(data));
   }
 
   function apiOnline() {
     elOnline.style.color = "green";
+    cleanupElement(elTabRunningJobs);
+    cleanupElement(elTabMyJobs);
     processHash();
   }
 
@@ -84,7 +93,7 @@ document.addEventListener("DOMContentLoaded", function() {
     ws = new WebSocket((location.protocol == 'https:' ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + "api.sock");
     ws.onmessage = function(e) {
       var msg = JSON.parse(e.data);
-      console.log(msg);
+      console.log("WS ->", msg);
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
@@ -112,14 +121,29 @@ document.addEventListener("DOMContentLoaded", function() {
     var _elTask = document.createElement("div");
     _elTask.id = task.id;
     var table = _elTask.appendChild(document.createElement("table"));
+    createTrTdColspan2(table, document.createTextNode("ok"));
     createTrNameValuePair(table, "name", document.createTextNode(task.name));
     createTrNameValuePair(table, "id", document.createTextNode(task.id));
-    elTabRunningJobs.appendChild(_elTask);
+    if (userTasks.indexOf(task.id) >= 0) {
+      var delButton = document.createElement("button");
+      delButton.innerText = "Delete";
+      delButton.addEventListener("click", function() {
+        sendWS(["endJob", [task.id]]);
+      });
+      createTrTdColspan2(table, delButton);
+      elTabMyJobs.appendChild(_elTask);
+    } else {
+      elTabRunningJobs.appendChild(_elTask);
+    }
   }
 
   function updateTaskElement(task, element) {
     if(task.status == "finished") {
-      elTabRunningJobs.removeChild(element);
+      if (userTasks.indexOf(task.id) >= 0) {
+        elTabMyJobs.removeChild(element);
+      } else {
+        elTabRunningJobs.removeChild(element);
+      }
     }
   }
 
@@ -168,6 +192,12 @@ document.addEventListener("DOMContentLoaded", function() {
     tdNameName.appendChild(document.createTextNode(name));
     tdNameValue.appendChild(value);
   }
+  function createTrTdColspan2(table, element) {
+    var tr = table.appendChild(document.createElement("tr"));
+    var td = tr.appendChild(document.createElement("td"));
+    td.colSpan = 2;
+    td.appendChild(element);
+  }
 
   function _createScriptsMultisel(scripts) {
     var select = document.createElement("select");
@@ -203,12 +233,7 @@ document.addEventListener("DOMContentLoaded", function() {
         sendWS(["startJob", [job.name]]);
         switchTab(elTabRunningJobs);
       });
-      var tr = document.createElement("tr");
-      var td = tr.appendChild(document.createElement("td"));
-      td.colSpan = 2;
-      td.appendChild(button);
-      table.appendChild(tr);
-
+      createTrTdColspan2(table, button);
       elTabStartJob.appendChild(table);
     }
   }
@@ -230,6 +255,10 @@ document.addEventListener("DOMContentLoaded", function() {
     location.hash = "";
     switchTab(elTabRunningJobs);
   });
+  showMyJobs.addEventListener("click", function() {
+    location.hash = "";
+    switchTab(elTabMyJobs);
+  });
   window.onhashchange = processHash;
 
 });
@@ -244,6 +273,7 @@ document.addEventListener("DOMContentLoaded", function() {
   <li><a id=showRunningTasks>Running jobs</a></li>
   <li><a id=showFinishedTasks>Finished jobs</a></li>
   <li><a id=showStartJob>Start job</a></li>
+  <li id=elMyJobs style="display:none"><a id=showMyJobs>My jobs</a></li>
 </ul>
 <form method=post action="login/github" id=elLogin style="display: none;"><input type=submit value="Login via github"></form>
 <form method=post action="logout" id=elLogout style="display: none;"><input type=submit value="Logout"></form>
@@ -256,6 +286,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </div>
 <div id=elTabRunningJobs></div>
 <div id=elTabStartJob style="display: none;"></div>
+<div id=elTabMyJobs style="display: none;"></div>
 </div>
 
 </body>
