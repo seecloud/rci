@@ -7,17 +7,22 @@ body { margin: 0; padding: 0; font-family: sans-serif; }
 td { border: 1px solid; }
 div#elContent { margin: 0 2in; padding: 1em; background-color: white; }
 div#elJobLog { background-color: black; color: white; font: 10pt monospace; height: 4in; overflow: scroll; }
-div#elJobLog > p,span { margin: 0; padding: 0; white-space: pre; }
-div#elJobLog > p.err,span.err { color: red; }
+div#elJobLog > p { margin: 0; padding: 0; white-space: pre; }
+div#elJobLog > span { margin: 0; padding: 0; white-space: pre; }
+div#elJobLog > p.err { color: red; }
+div#elJobLog > span.err { color: red; }
 div#elPanel li { border: 1px solid #aaa; }
 div#elPanel li:hover { background-color: #ddd; }
-div#elPanel form,ul,li { display: inline; padding: 0; }
+div#elPanel ul { display: inline; padding: 0; }
+div#elPanel li { display: inline; padding: 0; }
 div#elPanel form { display: inline; float: right; }
 div#elPanel span { margin-left: 1em; }
-div#elPanel { width: 100%; background-color: #eee; height: 2em; border-bottom: 1px solid #bbb; padding-top: 6pt; padding-bottom: 0; }
 div#elPanel a:hover { cursor:pointer; }
+div#elPanel { width: 100%; background-color: #eee; height: 2em; border-bottom: 1px solid #bbb; padding-top: 6pt; padding-bottom: 0; }
 ul#elTabs { margin-left: 5em; }
 ul#elTabs li { background-color: white; margin: 1pt; padding: 2pt; }
+div.task { float: left; background-color: #ffd; border: 1px solid #bbb; margin: 4pt; padding: 6pt; }
+p { margin: 0; }
 
 </style>
 <script type="text/javascript">
@@ -120,17 +125,30 @@ document.addEventListener("DOMContentLoaded", function() {
   function createTaskElement(task) {
     var _elTask = document.createElement("div");
     _elTask.id = task.id;
-    var table = _elTask.appendChild(document.createElement("table"));
-    createTrTdColspan2(table, document.createTextNode("ok"));
-    createTrNameValuePair(table, "name", document.createTextNode(task.name));
-    createTrNameValuePair(table, "id", document.createTextNode(task.id));
+    _elTask.className = "task";
+    var title = document.createElement("p");
+    title.innerText = task.id;
+    _elTask.appendChild(title);
+    var ul = document.createElement("ul");
+    for (var key in task.jobs) {
+      if(task.jobs.hasOwnProperty(key)) {
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.href = "#tasks/" + task.id + "/" + key;
+        a.innerText = key;
+        li.appendChild(a);
+        ul.appendChild(li);
+      }
+    }
+    _elTask.appendChild(ul);
+
     if (userTasks.indexOf(task.id) >= 0) {
       var delButton = document.createElement("button");
       delButton.innerText = "Delete";
       delButton.addEventListener("click", function() {
         sendWS(["endJob", [task.id]]);
       });
-      createTrTdColspan2(table, delButton);
+      _elTask.appendChild(delButton);
       elTabMyJobs.appendChild(_elTask);
     } else {
       elTabRunningJobs.appendChild(_elTask);
@@ -240,7 +258,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function processHash() {
     bits = window.location.hash.split("/");
-    if (bits[0] === "#tasks") {
+    if (bits.length === 3 && bits[0] === "#tasks") {
       sendWS(["connectJob", [bits[1], bits[2]]]);
     }
   }
