@@ -17,59 +17,66 @@ import base64
 from collections import defaultdict
 import functools
 import json
+import logging
 import pkgutil
 import dbm
 import os
 
 from rci import base
+from rci import job
 from rci.task import Task
 from rci.common import github
 
 from aiohttp import web
 import yaml
 
+LOG = logging
+
 
 class Event(base.Event):
 
-    def get_title(self):
-        return self.data["title"]
-
-    def __init__(self, root, raw_event, event_type, client):
-        self.root = root
-        self.raw_event = raw_event
-        self.client = client
-
-        pr = raw_event["pull_request"]
-        self.project = raw_event["repository"]["full_name"]
+    def __init__(self, root, env, data, client, jobs_type):
+        pr = data["pull_request"]
+        self.project = data["repository"]["full_name"]
         self.head = pr["head"]["sha"]
         self.url = pr["url"]
-        self.event_type = event_type
+        self.jobs_type = jobs_type
         self.env = {
             "GITHUB_REPO": self.project,
             "GITHUB_HEAD": self.head,
         }
         if pr["head"]["repo"]["full_name"] != self.project:
             self.env["GITHUB_REMOTE"] = pr["head"]["repo"]["clone_url"]
+        super().__init__(root, env, data)
 
-    async def job_started_cb(self, job):
+    def get_title(self):
+        return self.data["pull_request"]["title"]
+
+    def get_jobs(self):
+        jobs = []
+        for jc in self.root.config.get_jobs(self.project, self.jobs_type):
+            jobs.append(job.Job(self, jc, self.env))
+        return jobs
+
+    def job_started_cb(self, job):
         data = {
             "state": "pending",
             "context": job.name,
             "description": "pending...",
             "target_url": self.root.config.core["logs-url"] + job.id,
         }
-        await self.client.post("/repos/:repo/statuses/:sha",
-                               self.project, self.head, **data)
+        self.root.start_coro(self.client.post("/repos/:repo/statuses/:sha",
+                                              self.project, self.head, **data))
 
-    async def job_finished_cb(self, job, state):
+    def job_finished_cb(self, job, state):
         data = {
             "state": state,
             "description": state,
             "target_url": self.root.config.core["logs-url"] + job.id,
             "context": job.name,
         }
-        await self.client.post("/repos/:repo/statuses/:sha",
-                               self.project, self.head, **data)
+        self.root.start_coro(self.client.post("/repos/:repo/statuses/:sha",
+                                              self.project, self.head, **data))
 
 
 def session_resp(handler):
@@ -120,17 +127,9 @@ class Service:
     def __init__(self, root, **kwargs):
         self.root = root
         self.cfg = kwargs
-        self.url = url = kwargs.get("url", "/github/")
-        return
-        self.root.http.add_route("GET", url + "oauth2", self._handle_oauth2)
-        self.root.http.add_route("GET", url + "authorize", self._handle_registraion)
-        self.root.http.add_route("GET", url + "login", self._handle_login)
-        self.root.http.add_route("GET", url + "settings", self._handle_settings)
-        self.root.http.add_route("GET", url + "jobs", self._handle_jobs)
-        self.root.http.add_route("GET", url + "jobs.json", self._handle_jobs_json)
-        self.root.http.add_route("POST", url + "webhook", self._handle_webhook)
-        self.root.http.add_route("POST", url + "add_org_webhook", self._handle_add_org_webhook)
+        self.http_path = kwargs.get("http_path", "github")
         self.oauth = github.OAuth(**root.config.secrets[self.cfg["name"]])
+
         store = kwargs["data-path"]
         os.makedirs(store, exist_ok=True)
         self.users = dbm.open(os.path.join(store, "users.db"), "cs")
@@ -138,13 +137,13 @@ class Service:
         session_store = dbm.open(os.path.join(store, "sessions.db"), "cs")
         self.ss = SessionStore(session_store, kwargs.get("cookie_name", "ghs"))
 
-    @staticmethod
-    async def check_config(config, service_name):
-        """
-        :param rci.config.Config config:
-        :param str service_name:
-        """
-        pass
+    async def http_handler(self, request):
+        path = request.path.split("/")[2]
+        LOG.info("%s %s", request, path)
+        handler = getattr(self, "_http_%s" % path, None)
+        if handler:
+            return await handler(request)
+        return web.HTTPNotFound()
 
     async def _webhook_push(self, request, data):
         print(data)
@@ -160,12 +159,11 @@ class Service:
             else:
                 token = self.users[owner_id].decode("ascii")
             client = github.Client(token)
-            task = Task(self.root, Event(self.root, data, "cr", client))
-            self.root.start_task(task)
+            self.root.emit(Event(self.root, {}, data, client, "cr"))
         else:
             self.root.log.debug("Skipping event %s" % data["action"])
 
-    async def _handle_webhook(self, request):
+    async def _http_webhook(self, request):
         event = request.headers["X-Github-Event"]
         handler = getattr(self, "_webhook_%s" % event, None)
         if handler is None:
@@ -183,7 +181,7 @@ class Service:
             return github.Client(token)
 
     @session_resp
-    async def _handle_oauth2(self, request):
+    async def _http_oauth2(self, request):
         client = await self.oauth.oauth(request.GET["code"], request.GET["state"])
         user_data = await client.get("user")
         session = self.ss.session(request)
@@ -193,19 +191,7 @@ class Service:
         response = web.HTTPFound(self.url + "/settings")
         return response
 
-    async def _handle_jobs(self, request):
-        client = self._get_client(request)
-        data = await client.get("user")
-        orgs = await client.get("user/orgs")
-        response = pkgutil.get_data("rci.services.github", "jobs.html").decode("utf8")
-        return web.Response(text=response, content_type="text/html")
-
-    async def _handle_jobs_json(self, request):
-        session = self.ss.session(request)
-        print(session.data)
-        client = self._get_client(request)
-
-    async def _handle_settings(self, request):
+    async def _http_settings(self, request):
         import jinja2
         template = jinja2.Template(
                 pkgutil.get_data("rci.services.github", "github_settings.html").decode("utf8"))
@@ -217,7 +203,7 @@ class Service:
             orgs.append(org)
         return web.Response(text=template.render(orgs=orgs), content_type="text/html")
 
-    async def _handle_add_org_webhook(self, request):
+    async def _http_add_org_webhook(self, request):
         await request.post()
         data = {
             "name": "web",
@@ -234,11 +220,11 @@ class Service:
         self.orgs[str(org_data["id"]).encode("ascii")] = client.token
         return web.Response(text=str(resp))
 
-    async def _handle_login(self, request):
+    async def _http_login(self, request):
         url = self.oauth.generate_request_url(("read:org", ))
         return web.HTTPFound(url)
 
-    async def _handle_registraion(self, request):
+    async def _http_registraion(self, request):
         url = self.oauth.generate_request_url(
             ("repo:status", "write:repo_hook", "admin:org_hook", "read:org"))
         return web.HTTPFound(url)
@@ -248,3 +234,11 @@ class Service:
 
     async def run(self):
         await asyncio.Event(loop=self.root.loop).wait()
+
+    @staticmethod
+    async def check_config(config, service_name):
+        """
+        :param rci.config.Config config:
+        :param str service_name:
+        """
+        pass

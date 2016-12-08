@@ -110,7 +110,7 @@ class ConfigTestCase(unittest.TestCase):
         self.assertEqual(expected, s)
 
     def test_validation_unknown_job(self):
-        self.assertRaisesRegexp(config.ConfigError, "nonexistent-job",
+        self.assertRaisesRegex(config.ConfigError, "nonexistent-job",
             _append_and_get_config,
             {"matrix": {
                 "name": "unknownjob",
@@ -119,7 +119,7 @@ class ConfigTestCase(unittest.TestCase):
             }})
 
     def test_validation_unknown_script(self):
-        self.assertRaisesRegexp(config.ConfigError, "nonexistent-script",
+        self.assertRaisesRegex(config.ConfigError, "nonexistent-script",
             _append_and_get_config,
             {"job": {
                 "name": "unknownscript",
@@ -129,7 +129,7 @@ class ConfigTestCase(unittest.TestCase):
             }})
 
     def test_validation_unknown_provider(self):
-        self.assertRaisesRegexp(config.ConfigError, "nonexistent-provider",
+        self.assertRaisesRegex(config.ConfigError, "nonexistent-provider",
             _append_and_get_config,
             {"job": {
                 "name": "unknownprovider",
@@ -139,7 +139,7 @@ class ConfigTestCase(unittest.TestCase):
             }})
 
     def test_validation_unknown_cluster(self):
-        self.assertRaisesRegexp(config.ConfigError, "nonexistent-cluster",
+        self.assertRaisesRegex(config.ConfigError, "nonexistent-cluster",
             _append_and_get_config,
             {"job": {
                 "name": "unknowncluster",
@@ -149,7 +149,7 @@ class ConfigTestCase(unittest.TestCase):
             }})
 
     def test_validation_unknown_vm(self):
-        self.assertRaisesRegexp(config.ConfigError, "nonexistent-vm",
+        self.assertRaisesRegex(config.ConfigError, "nonexistent-vm",
             _append_and_get_config,
             {"job": {
                 "name": "unknownvm",

@@ -103,7 +103,7 @@ class Config:
             self.secrets = yaml.safe_load(open(secrets_file))
         self.core = self.data["core"]
 
-        print("Config loaded. Jobs: %s" % self._project_jobs)
+        logging.debug("Config loaded. Jobs: %s" % self._project_jobs)
 
     def is_project_configured(self, project):
         return project in self._project_jobs
