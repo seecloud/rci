@@ -22,7 +22,7 @@ import pkgutil
 import dbm
 import os
 
-from rci import base
+from rci import event
 from rci import job
 from rci.task import Task
 from rci.common import github
@@ -33,7 +33,7 @@ import yaml
 LOG = logging
 
 
-class Event(base.Event):
+class Event(event.Event):
 
     def __init__(self, root, env, data, client, jobs_type):
         pr = data["pull_request"]

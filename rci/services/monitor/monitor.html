@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", function() {
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
-      pingInterval = setInterval(function () {ws.send(JSON.stringify(["ping", []]))}, 5000);
+      pingInterval = setInterval(function () {ws.send(JSON.stringify(["ping", []]))}, 50000);
       apiOnline();
     };
     ws.onclose = function(e) {

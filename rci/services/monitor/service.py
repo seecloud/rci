@@ -22,7 +22,7 @@ import json
 import os
 import pkgutil
 import logging
-from rci import base
+from rci import event
 from rci import job
 from rci.common import github
 
@@ -243,7 +243,7 @@ class Service:
     __unicode__ = __repr__ = __str__
 
 
-class Event(base.Event):
+class Event(event.Event):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
