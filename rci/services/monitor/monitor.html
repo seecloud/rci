@@ -250,10 +250,10 @@ document.addEventListener("DOMContentLoaded", function() {
       createTrNameValuePair(table, "provider", document.createTextNode(job.provider));
       createTrNameValuePair(table, "cluster", document.createTextNode(job.cluster));
 
-      button = document.createElement("button");
+      var button = document.createElement("button");
       button.appendChild(document.createTextNode("Start"));
       button.addEventListener("click", function () {
-        sendWS(["startJob", [job.name]]);
+        sendWS(["startJob", [data.jobs[i].name]]);
         switchTab(elTabRunningJobs);
       });
       createTrTdColspan2(table, button);
