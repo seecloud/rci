@@ -31,6 +31,9 @@ class GithubError(Exception):
     pass
 
 
+class UnknownState(GithubError):
+    pass
+
 def safe_bit(bit, value):
     if "--" in value:
         raise ValueError("Double dashes are not allowed.")
@@ -203,7 +206,7 @@ class OAuth:
         try:
             scopes = self._requested_scopes.pop(state)
         except KeyError:
-            raise exceptions.UnknownState(state)
+            raise UnknownState(state)
         data = {
             "client_id": self._client_id,
             "client_secret": self._client_secret,

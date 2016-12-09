@@ -28,6 +28,7 @@ p { margin: 0; }
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
   var _newLine = false;
+  var pingInterval;
   var connectedTaskJob = null;
   var currentTabElement = elTabRunningJobs;
   var userTasks = [];
@@ -41,6 +42,8 @@ document.addEventListener("DOMContentLoaded", function() {
       elJobName.innerText = task.name + "::" + job_name;
       elJobState.innerText = task.status;
       cleanupElement(elJobLog);
+    },
+    pong: function(args) {
     },
     jobDisconnected: function(args) {
       connectedTaskJob = null;
@@ -102,10 +105,12 @@ document.addEventListener("DOMContentLoaded", function() {
       wsMsgHandlers[msg[0]](msg[1]);
     };
     ws.onopen = function(e) {
+      pingInterval = setInterval(function () {ws.send(JSON.stringify(["ping", []]))}, 5000);
       apiOnline();
     };
     ws.onclose = function(e) {
       apiOffline(false);
+      clearInterval(pingInterval);
       window.setTimeout(connectWS, 5000);
     }
   }
@@ -177,7 +182,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function parseOutput(stream, line) {
     var lines = line.split("\n");
     var _shouldScroll = elJobLog.scrollTopMax == elJobLog.scrollTop;
-    elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 10) + "px";
+    elJobLog.style.height = Math.trunc(window.innerHeight - elJobLog.getBoundingClientRect().top - 20) + "px";
     for(var i=0; i<lines.length; i++) {
       if(i>0) {
         _newLine = true;

@@ -27,7 +27,7 @@ from rci import job
 from rci.common import github
 
 LOG = logging
-ANONYMOUS_METHODS = {"listTasks", "connectJob", "disconnectJob"}
+ANONYMOUS_METHODS = {"listTasks", "connectJob", "disconnectJob", "ping"}
 OPERATOR_METHODS = {"getJobsConfigs", "startJob", "endJob"}
 ADMIN_METHODS = {}
 
@@ -96,6 +96,9 @@ class Service:
         LOG.debug("WS disconnect %s %s", event_json, job_name)
         self._disconnect_ws_console(ws)
         return json.dumps(["jobDisconnected", []])
+
+    async def _ws_ping(self, ws):
+        return """["pong", []]"""
 
     async def _ws_getTaskInfo(self, ws, event_id):
         event = self.root.eventid_event_map.get(job_id, None)
@@ -189,7 +192,7 @@ class Service:
                 else:
                     LOG.info("Unknown websocket method %s", method_name)
             else:
-                print(msg.type, msg)
+                LOG.debug("websocket msg %s %s", msg.type, msg)
         self._ws_user_map.pop(ws)
         self.connections.remove(ws)
         self._disconnect_ws_console(ws)
@@ -225,7 +228,6 @@ class Service:
         if request.path.endswith("/oauth2/github"):
             return (await self._oauth2_handler(request))
         if request.path.endswith("logout"):
-            print(request.method)
             if request.method == "POST":
                 sid = request.cookies.get(self.config["cookie_name"])
                 del(self.sessions[sid])
