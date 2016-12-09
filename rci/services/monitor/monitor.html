@@ -241,23 +241,25 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
+  function createJobForm(job) {
+    var table = document.createElement("table");
+    createTrNameValuePair(table, "name", document.createTextNode(job.name));
+    createTrNameValuePair(table, "provider", document.createTextNode(job.provider));
+    createTrNameValuePair(table, "cluster", document.createTextNode(job.cluster));
+    var button = document.createElement("button");
+    button.appendChild(document.createTextNode("Start"));
+    button.addEventListener("click", function () {
+      sendWS(["startJob", [job.name]]);
+      switchTab(elTabRunningJobs);
+    });
+    createTrTdColspan2(table, button);
+    elTabStartJob.appendChild(table);
+  }
+
   function updateStartJobForm(data) {
     cleanupElement(elTabStartJob);
     for(var i=0; i<data.jobs.length; i++) {
-      var job = data.jobs[i];
-      var table = document.createElement("table");
-      createTrNameValuePair(table, "name", document.createTextNode(job.name));
-      createTrNameValuePair(table, "provider", document.createTextNode(job.provider));
-      createTrNameValuePair(table, "cluster", document.createTextNode(job.cluster));
-
-      var button = document.createElement("button");
-      button.appendChild(document.createTextNode("Start"));
-      button.addEventListener("click", function () {
-        sendWS(["startJob", [data.jobs[i].name]]);
-        switchTab(elTabRunningJobs);
-      });
-      createTrTdColspan2(table, button);
-      elTabStartJob.appendChild(table);
+      createJobForm(data.jobs[i]);
     }
   }
 
