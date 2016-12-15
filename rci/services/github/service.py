@@ -40,13 +40,14 @@ class Event(event.Event):
         self.head = pr["head"]["sha"]
         self.url = pr["url"]
         self.jobs_type = jobs_type
-        self.env = {
+        self.env = env
+        self.env.update({
             "GITHUB_REPO": self.project,
             "GITHUB_HEAD": self.head,
-        }
+        })
         if pr["head"]["repo"]["full_name"] != self.project:
             self.env["GITHUB_REMOTE"] = pr["head"]["repo"]["clone_url"]
-        super().__init__(root, env, data)
+        super().__init__(root, self.env, data)
 
     def _get_target_url(self, job):
         path = "/%s/%s" % (job.event.id, job.config["name"])
