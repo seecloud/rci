@@ -30,12 +30,11 @@ from rci.common import github
 from aiohttp import web
 import yaml
 
-LOG = logging
-
 
 class Event(event.Event):
 
     def __init__(self, root, env, data, client, jobs_type):
+        self.client = client
         pr = data["pull_request"]
         self.project = data["repository"]["full_name"]
         self.head = pr["head"]["sha"]
@@ -49,6 +48,10 @@ class Event(event.Event):
             self.env["GITHUB_REMOTE"] = pr["head"]["repo"]["clone_url"]
         super().__init__(root, env, data)
 
+    def _get_target_url(self, job):
+        path = "/%s/%s" % (job.event.id, job.config["name"])
+        return self.root.config.core["logs-url"] + path
+
     def get_title(self):
         return self.data["pull_request"]["title"]
 
@@ -58,23 +61,25 @@ class Event(event.Event):
             jobs.append(job.Job(self, jc, self.env))
         return jobs
 
-    def job_started_cb(self, job):
+    def job_started_cb(self, job, task):
         data = {
             "state": "pending",
-            "context": job.name,
+            "context": job.config["name"],
             "description": "pending...",
-            "target_url": self.root.config.core["logs-url"] + job.id,
+            "target_url": self._get_target_url(job),
         }
+        logging.debug("Posting data %s", data)
         self.root.start_coro(self.client.post("/repos/:repo/statuses/:sha",
                                               self.project, self.head, **data))
 
-    def job_finished_cb(self, job, state):
+    def job_finished_cb(self, job, task):
         data = {
-            "state": state,
-            "description": state,
-            "target_url": self.root.config.core["logs-url"] + job.id,
-            "context": job.name,
+            "state": job.status,
+            "description": job.status,
+            "target_url": self._get_target_url(job),
+            "context": job.config["name"],
         }
+        logging.debug("Posting data %s", data)
         self.root.start_coro(self.client.post("/repos/:repo/statuses/:sha",
                                               self.project, self.head, **data))
 
@@ -139,7 +144,7 @@ class Service:
 
     async def http_handler(self, request):
         path = request.path.split("/")[2]
-        LOG.info("%s %s", request, path)
+        logging.info("%s %s", request, path)
         handler = getattr(self, "_http_%s" % path, None)
         if handler:
             return await handler(request)

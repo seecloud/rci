@@ -59,8 +59,13 @@ class Service:
         for ws in self.connections:
             ws.send_str(data)
 
-    def cb_console(self, job, stream, data):
-        LOG.debug("%s '%s'", job, data)
+    def cb_job_started(self, job):
+        path = os.path.join(self.config["jobs-logs"], job.event.id,
+                            job.config["name"])
+        os.makedirs(path)
+        path = os.path.join(path, "console.html")
+        outfile = open(path, "wb")
+        job.console_callbacks.append(functools.partial())
 
     def cb_task_updated(self, event):
         LOG.debug("UPDATE %s", event)
@@ -69,8 +74,6 @@ class Service:
     def cb_task_started(self, event):
         LOG.debug("START %s", event)
         self._broadcast(["taskUpdate", event.to_dict()])
-        for job in event.jobs:
-            job.console_callbacks.append(functools.partial(self.cb_console, job))
 
     def cb_task_finished(self, event):
         LOG.debug("END %s", event)
