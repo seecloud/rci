@@ -60,12 +60,12 @@ class Service:
             ws.send_str(data)
 
     def cb_job_started(self, job):
-        path = os.path.join(self.config["jobs-logs"], job.event.id,
+        path = os.path.join(self.config["logs_path"], job.event.id,
                             job.config["name"])
         os.makedirs(path)
-        path = os.path.join(path, "console.html")
+        path = os.path.join(path, "console.txt")
         outfile = open(path, "wb")
-        job.console_callbacks.append(functools.partial())
+        job.console_callbacks.append(lambda s,d: outfile.write(d))
 
     def cb_task_updated(self, event):
         LOG.debug("UPDATE %s", event)
@@ -84,7 +84,8 @@ class Service:
         if event:
             def cb(stream, data):
                 try:
-                    ws.send_str(json.dumps(["consoleData", [stream, data]]))
+                    ws.send_str(json.dumps(["consoleData",
+                                           [stream, data.decode('utf8')]]))
                 except Exception:
                     LOG.exception("error sending console data")
             job = event.name_job_map[job_name]

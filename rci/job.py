@@ -32,6 +32,7 @@ class Job:
         self.env.update(self.cluster.env)
 
     def _console_cb(self, stream, data):
+        data = data.encode('utf8')
         for cb in self.console_callbacks:
             cb(stream, data)
 
@@ -57,7 +58,9 @@ class Job:
                 if error:
                     self.root.log.debug("%s error in script %s", self, script)
                     self._update_status("failure")
+                    self.console_callbacks = []
                     return error
+        self.console_callbacks = []
         self._update_status("success")
         self.root.log.debug("%s all scripts success", self)
 
