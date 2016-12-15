@@ -63,6 +63,7 @@ class Event(event.Event):
         return jobs
 
     def job_started_cb(self, job, task):
+        super().job_started_cb(job, task)
         data = {
             "state": "pending",
             "context": job.config["name"],
@@ -74,6 +75,7 @@ class Event(event.Event):
                                               self.project, self.head, **data))
 
     def job_finished_cb(self, job, task):
+        super().job_finished_cb(job, task)
         data = {
             "state": job.status,
             "description": job.status,
