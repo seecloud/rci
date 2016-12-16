@@ -6,9 +6,9 @@
 body { margin: 0; padding: 0; font-family: sans-serif; }
 td { border: 1px solid; }
 div#elContent { margin: 0 2in; padding: 1em; background-color: white; }
-div#elJobLog { background-color: black; color: white; font: 10pt monospace; height: 4in; overflow: scroll; }
-div#elJobLog > p { margin: 0; padding: 0; white-space: pre; }
-div#elJobLog > span { margin: 0; padding: 0; white-space: pre; }
+div#elJobLog { background-color: black; color: white; font: 10pt monospace; height: 4in; overflow-y: scroll; }
+div#elJobLog > p { margin: 0; padding: 0; white-space: pre-wrap; word-wrap: break-word; }
+div#elJobLog > span { margin: 0; padding: 0; white-space: pre-wrap; word-wrap: break-word; }
 div#elJobLog > p.err { color: red; }
 div#elJobLog > span.err { color: red; }
 div#elPanel li { border: 1px solid #aaa; }
