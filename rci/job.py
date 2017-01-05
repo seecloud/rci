@@ -22,7 +22,7 @@ class Job:
         self.root = event.root
         self.config = config
         self.env = env
-        self.console_callbacks = []
+        self.console_callbacks = set()
         self.status_callbacks = []
         self.status = "queued"
 
@@ -58,9 +58,9 @@ class Job:
                 if error:
                     self.root.log.debug("%s error in script %s", self, script)
                     self._update_status("failure")
-                    self.console_callbacks = []
+                    self.console_callbacks = set()
                     return error
-        self.console_callbacks = []
+        self.console_callbacks = set()
         self._update_status("success")
         self.root.log.debug("%s all scripts success", self)
 

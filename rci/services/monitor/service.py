@@ -65,7 +65,7 @@ class Service:
         os.makedirs(path)
         path = os.path.join(path, "console.txt")
         outfile = open(path, "wb")
-        job.console_callbacks.append(lambda s,d: outfile.write(d))
+        job.console_callbacks.add(lambda s,d: outfile.write(d))
 
     def cb_task_updated(self, event):
         LOG.debug("UPDATE %s", event)
@@ -89,7 +89,7 @@ class Service:
                 except Exception:
                     LOG.exception("error sending console data")
             job = event.name_job_map[job_name]
-            job.console_callbacks.append(cb)
+            job.console_callbacks.add(cb)
             self._ws_job_listeners[ws].append(job)
             self._jobws_cb_map[(job, ws)].append(cb)
             return json.dumps(["jobConnected", [event.to_dict(), job.config["name"]]])
@@ -205,7 +205,7 @@ class Service:
     def _disconnect_ws_console(self, ws):
         for job in self._ws_job_listeners.get(ws, []):
             for cb in self._jobws_cb_map.pop((job, ws), []):
-                job.console_callbacks.remove(cb)
+                job.console_callbacks.discard(cb)
 
     async def _oauth2_handler(self, request):
         client = await self.oauth.oauth(request.GET["code"], request.GET["state"])
