@@ -33,7 +33,7 @@ import yaml
 
 class Event(event.Event):
 
-    def __init__(self, root, env, data, client, jobs_type):
+    def __init__(self, root, env, data, client, jobs_type, event_type):
         self.client = client
         pr = data["pull_request"]
         self.project = data["repository"]["full_name"]
@@ -44,6 +44,7 @@ class Event(event.Event):
         self.env.update({
             "GITHUB_REPO": self.project,
             "GITHUB_HEAD": self.head,
+            "GITHUB_PR_ACTION": event_type,
         })
         if pr["head"]["repo"]["full_name"] != self.project:
             self.env["GITHUB_REMOTE"] = pr["head"]["repo"]["clone_url"]
@@ -157,19 +158,24 @@ class Service:
         print(data)
 
     async def _webhook_pull_request(self, request, data):
-        if data["action"] in ("opened", "synchronize"):
-            self.root.log.info("Emiting event")
-            owner = data["repository"]["owner"]
-            owner_type = str(owner["type"]).encode("ascii")
-            owner_id = str(owner["id"]).encode("ascii")
-            if owner_type == b"Organization":
-                token = self.orgs[owner_id].decode("ascii")
-            else:
-                token = self.users[owner_id].decode("ascii")
-            client = github.Client(token)
-            self.root.emit(Event(self.root, {}, data, client, "cr"))
+        if data["action"] in ("opened", "reopened", "synchronize"):
+            jobs_type = "cr"
+        elif data["action"] == "closed":
+            jobs_type = "cr-closed"
         else:
             self.root.log.debug("Skipping event %s" % data["action"])
+            return
+        self.root.log.info("Emiting event")
+        owner = data["repository"]["owner"]
+        owner_type = str(owner["type"]).encode("ascii")
+        owner_id = str(owner["id"]).encode("ascii")
+        if owner_type == b"Organization":
+            token = self.orgs[owner_id].decode("ascii")
+        else:
+            token = self.users[owner_id].decode("ascii")
+        client = github.Client(token)
+        self.root.emit(
+                Event(self.root, {}, data, client, jobs_type, data["action"]))
 
     async def _http_webhook(self, request):
         event = request.headers["X-Github-Event"]

@@ -31,6 +31,16 @@
     sessions-path: /tmp/rci-gh/sessions
 
 - provider:
+    name: st
+    module: rci.providers.static
+    clusters:
+      portal:
+        vm:
+          username: ubuntu
+          hostname: 172.16.169.58
+          keys: ["/home/eye/.ssh/test"]
+
+- provider:
     name: os
     module: rci.providers.openstack
     max_vms: 64
@@ -168,6 +178,58 @@
         - git-checkout
         - prepare-automation-nodes
 
+- job:
+    name: deploy_fake_portal
+    provider: st
+    cluster: portal
+    scripts:
+      vm:
+        - deploy-portal
+
+- script:
+    name: deploy-portal
+    data: |
+        export GITHUB_REPO="seecloud/ceagle"
+        export GITHUB_HEAD="master"
+        export GITHUB_PR_ID="12"
+        export GITHUB_PR_ACTION="opened"
+        #export GITHUB_PR_ACTION="closed"
+        #export GITHUB_PR_ACTION="synchronized"
+        CEAGLE_NAME="ceagle-${GITHUB_PR_ID}"
+        PORTAL_NAME="portal-${GITHUB_PR_ID}"
+        PROJECT=$(echo $GITHUB_REPO | awk -F '/' '{print $2}')
+        DIR=$(mktemp -d)
+        cd $DIR
+        git clone git://github.com/seecloud/ceagle.git &
+        git clone git://github.com/seecloud/fuel-devops-portal.git &
+        wait
+        cd $PROJECT
+        git checkout $GITHUB_HEAD
+        TITLE=$(git log --format=%B -n 1 HEAD | head -n 1 | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'"'"'/\&#39;/g')
+        cd ..
+        docker build -t $CEAGLE_NAME ceagle
+        docker build -t $PORTAL_NAME fuel-devops-portal
+        docker kill $CEAGLE_NAME || true
+        docker kill $PORTAL_NAME || true
+        docker rm $(docker ps -q -a -f state=exited) || true
+        docker run -d --name="$CEAGLE_NAME" $CEAGLE_NAME
+        CEAGLE_IP=$(docker inspect --format='{{.NetworkSettings.IPAddress}}' $CEAGLE_NAME)
+        PORT=3000
+        for USED in $(docker ps | sed -n 's/.*:\([0-9]\+\)\->[0-9]\+.*/\1/g p' | sort -g); do
+            if [ $USED -eq $PORT ]; then
+                ((PORT++))
+            else
+                break
+            fi
+        done
+        mkdir conf.d
+        sed "s|proxy_pass.*$|proxy_pass http://$CEAGLE_IP:5000;|" fuel-devops-portal/etc/nginx/fuel-devops-portal.conf > conf.d/default.conf
+        docker run -d --name="$PORTAL_NAME" -v $DIR/conf.d:/etc/nginx/conf.d -p $PORT:80 $PORTAL_NAME
+        rm -fr $DIR/ceagle
+        rm -fr $DIR/fuel-devops-portal
+        URL="http://172.16.169.58:$PORT"
+        sed -i "/Welcome/a<a href=$URL>$TITLE</a>" /usr/share/nginx/html/index.html
+
 - matrix:
     name: image-builder
     projects:
@@ -176,5 +238,6 @@
       - redixin/automation
     cr:
       - env
+      - deploy_fake_portal
     push:
       - env

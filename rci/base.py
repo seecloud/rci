@@ -50,6 +50,9 @@ class SSHVM(VM):
         if e:
             return e
 
+    async def publish_path(self, src_path, dst_path):
+        pass
+
 
 class Cluster:
 
